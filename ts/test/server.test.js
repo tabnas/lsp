@@ -11,6 +11,7 @@ const assert = require('node:assert')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const { pathToFileURL } = require('url')
 
 const { startServer } = require('../src/server')
 
@@ -143,17 +144,25 @@ describe('lsp-server-routing', () => {
   })
 
   it('a folder manifest stays scoped to its folder', () => {
+    // pathToFileURL, not 'file://' + dir. On Windows a temp dir is
+    // `C:\Users\...`, so concatenating produces `file://C:\Users\...`
+    // — a URI whose authority is `c` and whose path is nothing of the
+    // sort. Routing then matched nothing and `.entry` was null. It only
+    // ever looked right because this suite had never run on Windows:
+    // the applied ci.yml targeted a layout that does not exist, so
+    // every run died at `npm i` before a test body executed.
     const alpha = fs.mkdtempSync(path.join(os.tmpdir(), 'lsp-ws-'))
+    const alphaUri = pathToFileURL(alpha).href
     fs.mkdirSync(path.join(alpha, '.tabnas'), { recursive: true })
     fs.writeFileSync(path.join(alpha, '.tabnas', 'lsp.json'), JSON.stringify({
       languages: [{ languageId: 'scoped', extensions: ['.scoped'], load: { spec: SPEC_FILE } }],
     }))
     const { server } = start({
-      workspaceFolders: [{ uri: 'file://' + alpha }, { uri: 'file:///ws/beta' }],
+      workspaceFolders: [{ uri: alphaUri }, { uri: 'file:///ws/beta' }],
     })
     const reg = server.registry()
     assert.equal(
-      reg.resolve('scoped', 'file://' + alpha + '/x.scoped').entry.languageId, 'scoped')
+      reg.resolve('scoped', alphaUri + '/x.scoped').entry.languageId, 'scoped')
     assert.equal(
       reg.resolve('scoped', 'file:///ws/beta/x.scoped').entry, null,
       'a folder manifest must not capture another folder')
