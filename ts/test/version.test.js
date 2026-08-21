@@ -20,6 +20,20 @@ describe('version', () => {
     assert.equal(VERSION, pkg.version)
   })
 
+  it('declares no engine version the fleet has not published', () => {
+    // The peer range shipped as ">=0.9.0" while the newest published
+    // @tabnas/parser was 0.8.11 — a floor no release satisfied, so
+    // `npm install @tabnas/lsp` failed ETARGET for everyone. It went
+    // unnoticed because the `file:` devDependency satisfies resolution
+    // locally and npm does not enforce a root package's own peers.
+    // The fleet convention (admin/publish.sh) is an OPEN range: every
+    // @tabnas peer is ">=0" by design, so installs resolve the latest
+    // published engine.
+    const pkg = require('../package.json')
+    assert.equal(pkg.peerDependencies['@tabnas/parser'], '>=0',
+      'the @tabnas peer range must stay open — see admin/publish.sh')
+  })
+
   it('VERSION equals the Go const in go/lsp.go', () => {
     const goSrc = fs.readFileSync(
       path.join(__dirname, '..', '..', 'go', 'lsp.go'), 'utf8')

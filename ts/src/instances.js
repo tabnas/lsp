@@ -38,23 +38,29 @@ class Instances {
       ' ' + (folder || entry._dir || '')
   }
 
-  quarantined(entry) {
-    return QUARANTINE_LIMIT <= (this.failures.get(entry.languageId) || 0)
+  // Quarantine is keyed the same way the instance cache is. Keying it
+  // by languageId alone, while the cache keys on (languageId, options,
+  // folder), meant one workspace folder's broken `mydsl` grammar
+  // disabled every OTHER folder's working `mydsl` too — and a
+  // languageId is not unique across folders by design.
+  quarantined(entry, folder) {
+    return QUARANTINE_LIMIT <= (this.failures.get(this.key(entry, folder)) || 0)
   }
 
-  recordFailure(entry) {
-    this.failures.set(entry.languageId, 1 + (this.failures.get(entry.languageId) || 0))
+  recordFailure(entry, folder) {
+    const k = this.key(entry, folder)
+    this.failures.set(k, 1 + (this.failures.get(k) || 0))
   }
 
   get(entry, folder) {
-    if (this.quarantined(entry)) return null
+    if (this.quarantined(entry, folder)) return null
     const k = this.key(entry, folder)
     let inst = this.cache.get(k)
     if (!inst) {
       try {
         inst = this.makeInstance(entry)
       } catch (e) {
-        this.recordFailure(entry)
+        this.recordFailure(entry, folder)
         throw e
       }
       this.installMux(inst)
@@ -64,11 +70,16 @@ class Instances {
   }
 
   // Grammar hot-reload: rebuild, never re-apply (tn.grammar prepends).
+  // Clears the failure count for the same keys it drops from the cache,
+  // so a reloaded grammar leaves quarantine.
   invalidate(entry) {
+    const prefix = entry.languageId + ' '
     for (const k of [...this.cache.keys()]) {
-      if (k.startsWith(entry.languageId + ' ')) this.cache.delete(k)
+      if (k.startsWith(prefix)) this.cache.delete(k)
     }
-    this.failures.delete(entry.languageId)
+    for (const k of [...this.failures.keys()]) {
+      if (k.startsWith(prefix)) this.failures.delete(k)
+    }
   }
 
   installMux(inst) {

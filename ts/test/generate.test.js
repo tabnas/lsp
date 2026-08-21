@@ -341,6 +341,51 @@ describe('generate-unified', () => {
     assert.ok(ext.includes("'mydsl.serverPath'") || ext.includes('"mydsl.serverPath"'), ext)
   })
 
+  it('a manifest cannot delete outside the output directory', () => {
+    // The manifest is a file on disk, so it is INPUT: hand-edited,
+    // badly merged, or written by an older version. An entry like
+    // '../precious/keep.txt' used to be unlinked, and the prune loop —
+    // which stopped only on exact equality with `out` — then climbed
+    // past `out`, rmdir'ing ancestors until one was non-empty.
+    const root = tmp('gen-esc-')
+    const out = path.join(root, 'out')
+    const precious = path.join(root, 'precious')
+    fs.mkdirSync(out, { recursive: true })
+    fs.mkdirSync(precious, { recursive: true })
+    const keep = path.join(precious, 'keep.txt')
+    fs.writeFileSync(keep, 'do not delete me')
+    fs.writeFileSync(path.join(out, '.tabnas-lsp-gen.json'), JSON.stringify({
+      generated: 'tabnas-lsp-gen',
+      files: ['../precious/keep.txt', path.join(root, 'precious', 'keep.txt'), 42, null],
+    }))
+
+    generate({ out, input: { spec: SPEC_FILE }, languageId: 'mydsl', editors: [] })
+
+    assert.ok(fs.existsSync(keep), 'a manifest entry escaped the output directory')
+    assert.ok(fs.existsSync(precious), 'the prune loop climbed out of the output directory')
+  })
+
+  it('the generated go.mod names no unpublished version', () => {
+    // Every hardcoded version here was a guess, and both guesses were
+    // wrong: github.com/tabnas/lsp/go v0.1.0 and parser/go v0.9.0 have
+    // never been published, so `go mod tidy` — the documented first
+    // step — failed outright and every generated Go server was dead on
+    // arrival. Requirements come from `go mod tidy` over main.go's
+    // imports instead.
+    const out = tmp('gen-gomod-')
+    generate({
+      out, input: { spec: SPEC_FILE }, languageId: 'mydsl',
+      runtime: 'go', editors: [],
+    })
+    const goMod = fs.readFileSync(path.join(out, 'server', 'go.mod'), 'utf8')
+    assert.ok(!/^\s*require\s+github\.com\/tabnas\/(lsp|parser)\/go\s/m.test(goMod),
+      'go.mod pins a fleet module version the generator only guessed:\n' + goMod)
+    assert.ok(!goMod.includes('v0.9.0') && !goMod.includes('v0.1.0'), goMod)
+    // main.go still imports them, which is what tidy resolves from.
+    const mainGo = fs.readFileSync(path.join(out, 'server', 'main.go'), 'utf8')
+    assert.ok(mainGo.includes('github.com/tabnas/lsp/go'))
+  })
+
   it('regeneration deletes files the previous run owned', () => {
     // Overwrite-only regeneration leaves a removed language's files in
     // place — stale artifacts that still ship, and a staleness gate

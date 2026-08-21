@@ -175,8 +175,15 @@ func (s *Server) Handle(msg *rpcMessage) {
 				start := doc.OffsetAt(change.Range.Start)
 				end := doc.OffsetAt(change.Range.End)
 				text = text[:start] + change.Text + text[end:]
-				doc.Update(text, doc.Version) // keep line index fresh mid-loop
 			}
+			// After EVERY change, not only ranged ones. A didChange array
+			// may legally mix a full replacement with later ranged edits,
+			// and the replacement branch used to leave doc (and its line
+			// index) on the PREVIOUS text — so the next ranged edit
+			// computed byte offsets against a document that no longer
+			// existed. On a shrinking replacement that slices out of
+			// range and panics the server.
+			doc.Update(text, doc.Version) // keep line index fresh mid-loop
 		}
 		doc.Update(text, p.TextDocument.Version)
 		delete(s.analyses, p.TextDocument.URI)

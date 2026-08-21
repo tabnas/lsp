@@ -9,10 +9,18 @@ standalone single-language servers (Node packages or Go binaries) plus
 the editor plugins to use them, from one parser module or grammar.
 
 ```
-npx @tabnas/lsp tabnas-lsp --stdio        # the unified server
-npx tabnas-lsp-gen --spec my-grammar.json --language-id mydsl \
-  --out mydsl-tools                        # a branded server + editor plugins
+# the unified server
+npx --package=@tabnas/lsp tabnas-lsp --stdio
+
+# a branded single-language server + editor plugins
+npx --package=@tabnas/lsp tabnas-lsp-gen \
+  --spec my-grammar.json --language-id mydsl --out mydsl-tools
 ```
+
+(`--package` is required: this package ships two bins and neither is
+named `@tabnas/lsp`, so `npx @tabnas/lsp …` cannot select one — and a
+bare `npx tabnas-lsp-gen` would fetch whatever unrelated package holds
+that name on the registry.)
 
 Diagnostics (multi-error, via engine recovery), completion (engine
 continuations), semantic tokens (reconciled lex trace), and outline

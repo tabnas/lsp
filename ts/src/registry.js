@@ -49,11 +49,19 @@ function normalize(e) {
     options: e.options || {},
     stack: e.stack || null, // explicit plugin stack override
     // Provenance, stamped by the host: which config tier supplied this
-    // entry ('bundled' | 'user' | 'workspace') and, for workspace
-    // entries, the folder its file paths resolve against (sandboxed)
-    // and its documents live under (routing scope).
+    // entry ('bundled' | 'user' | 'workspace').
     _source: e._source || 'bundled',
+    // _dir is the SANDBOX BASE: the folder a workspace entry's relative
+    // grammar paths resolve against (loaders.js resolveSandboxed), and
+    // part of the instance cache key.
     _dir: e._dir || null,
+    // _scope is the ROUTING SCOPE and is deliberately separate: the
+    // folder whose documents this entry serves, or null for "anywhere".
+    // Conflating the two broke client-supplied entries — they need a
+    // sandbox base (some folder) but are session-wide, so scoping them
+    // to that base made them invisible in every other workspace folder.
+    // Defaults to _dir so a folder manifest stays folder-scoped.
+    _scope: '_scope' in e ? e._scope : (e._dir || null),
   }
 }
 
@@ -69,11 +77,15 @@ function fsPathOf(uri) {
   return p
 }
 
+// Containment over the two path shapes this server actually holds.
+// fsPathOf() always yields forward slashes; the folder side comes from
+// url.fileURLToPath, which yields BACKSLASHES on win32 — so on Windows
+// the two sides never matched and folder-scoped routing was dead. The
+// dir side is normalised to forward slashes before comparing.
 function contains(dir, fsPath) {
   if (null == dir || null == fsPath) return false
-  const d = dir.replace(/[\\/]+$/, '')
-  return fsPath === d ||
-    fsPath.startsWith(d + path.sep) || fsPath.startsWith(d + '/')
+  const d = String(dir).replace(/\\/g, '/').replace(/\/+$/, '')
+  return fsPath === d || fsPath.startsWith(d + '/')
 }
 
 class Registry {
@@ -107,14 +119,22 @@ class Registry {
     const fsPath = fsPathOf(uri)
     const ext = extOf(uri)
 
-    if (null != fsPath) {
-      const inFolder = this.workspace
-        .filter((e) => e.enabled && 'modifier' !== e.pluginKind &&
-          contains(e._dir, fsPath))
-        .sort((a, b) => String(b._dir).length - String(a._dir).length)
-      let byId = inFolder.find((e) => e.languageId === languageId)
+    // Workspace candidates, most specific first: entries scoped to a
+    // folder containing this document (deepest folder wins), then
+    // unscoped session-wide entries. An unscoped entry still applies to
+    // a non-file document (untitled:, vscode-notebook-cell:), which a
+    // folder-scoped one never can.
+    const usable = this.workspace.filter(
+      (e) => e.enabled && 'modifier' !== e.pluginKind)
+    const scoped = null == fsPath ? [] : usable
+      .filter((e) => null != e._scope && contains(e._scope, fsPath))
+      .sort((a, b) => String(b._scope).length - String(a._scope).length)
+    const candidates = scoped.concat(usable.filter((e) => null == e._scope))
+
+    if (0 < candidates.length) {
+      const byId = candidates.find((e) => e.languageId === languageId)
       if (byId) return { entry: byId, via: 'workspace:languageId' }
-      let byExt = inFolder.find((e) =>
+      const byExt = candidates.find((e) =>
         null != ext && e.extensions.some((x) => x.toLowerCase() === ext))
       if (byExt) return { entry: byExt, via: 'workspace:extension' }
     }

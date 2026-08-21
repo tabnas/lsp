@@ -337,13 +337,21 @@ rules) runs before any engine load:
 5. schema-`v` gate against the engine's `BUILTIN_SCHEMA_VERSION`;
 6. composition-aware trial load against the entry's declared stack.
 
-Beyond the firewall: parse budgets/cancellation bound ReDoS-shaped
-inputs (serialized regexes are legal data); document-size caps;
+Beyond the firewall, and shipped today: total-complexity bounds on
+grammar data (rule count, total alternates, nesting depth, file bytes);
 workspace manifests are trust-gated (they can claim `.json` to shadow a
 trusted language — default-deny for module loads, extension claims
 surfaced); every parse/provider call is wrapped; per-grammar quarantine
 keeps one bad grammar from taking the server down; multisource
-resolution is workspace-sandboxed and off by default. Generated servers
+resolution is workspace-sandboxed and off by default.
+
+**Not yet shipped, and load-bearing for the ReDoS story** (§14 tracks
+both): parse budgets/cancellation and document-size caps. Serialized
+regexes are legal grammar data and pass the `ref` scan by design, so
+until the engine's `parse.budget` hook is wired here, a hostile
+workspace grammar's regex is bounded only by the caps above — which
+bound how much grammar is LOADED, not how long a parse may run.
+Generated servers
 inherit all of this by construction, because they wrap the same core.
 
 ## 11. Protocol decisions
@@ -399,7 +407,10 @@ instances, diagnostics, semantic tokens, outline, completion,
 `Continuations`, the generator with Node and Go targets and the editor
 plugin matrix, and the conformance fixtures.
 
-Tracked next, in rough value order: hover token descriptions; worker
+Tracked next, in rough value order: **parse budgets and document-size
+caps** (the §10 gap — the engine's `parse.budget` hook exists and is
+simply not wired here yet, and it is what bounds a hostile grammar's
+serialized regex); hover token descriptions; worker
 isolation + in-flight cancellation; edit-transformation of cached
 spans; browser build (`vscode-languageserver/browser` — the web
 playground already runs the engine client-side); marketplace packaging
