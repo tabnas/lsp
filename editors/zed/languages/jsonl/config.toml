@@ -1,0 +1,3 @@
+name = "jsonl"
+grammar = "jsonl"
+path_suffixes = ["jsonl"]

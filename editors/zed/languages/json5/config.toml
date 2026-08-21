@@ -1,0 +1,3 @@
+name = "json5"
+grammar = "json5"
+path_suffixes = ["json5"]

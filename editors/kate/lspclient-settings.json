@@ -1,0 +1,114 @@
+{
+  "servers": {
+    "abnf": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^abnf$"
+    },
+    "bnf": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^bnf$"
+    },
+    "pgn": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^pgn$"
+    },
+    "csv": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^csv$"
+    },
+    "ebnf": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^ebnf$"
+    },
+    "feed": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^feed$"
+    },
+    "gbnf": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^gbnf$"
+    },
+    "json5": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^json5$"
+    },
+    "jsonic": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^jsonic$"
+    },
+    "jsonl": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^jsonl$"
+    },
+    "zon": {
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "rootIndicationFileNames": [
+        ".git"
+      ],
+      "highlightingModeRegex": "^zon$"
+    }
+  }
+}

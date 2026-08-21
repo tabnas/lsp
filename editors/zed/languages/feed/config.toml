@@ -1,0 +1,3 @@
+name = "feed"
+grammar = "feed"
+path_suffixes = ["rss", "atom"]

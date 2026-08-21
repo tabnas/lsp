@@ -1,0 +1,92 @@
+{
+  "clients": {
+    "abnf-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.abnf"
+    },
+    "bnf-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.bnf"
+    },
+    "pgn-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.pgn"
+    },
+    "csv-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.csv"
+    },
+    "ebnf-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.ebnf"
+    },
+    "feed-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.feed"
+    },
+    "gbnf-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.gbnf"
+    },
+    "json5-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.json5"
+    },
+    "jsonic-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.jsonic"
+    },
+    "jsonl-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.jsonl"
+    },
+    "zon-lsp": {
+      "enabled": true,
+      "command": [
+        "tabnas-lsp",
+        "--stdio"
+      ],
+      "selector": "source.zon"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+name = "abnf"
+grammar = "abnf"
+path_suffixes = ["abnf"]

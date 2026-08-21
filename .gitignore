@@ -1,0 +1,4 @@
+node_modules/
+*.log
+go.work
+go.work.sum
