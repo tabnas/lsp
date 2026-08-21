@@ -873,10 +873,38 @@ function writeFiles(out, files) {
   // with `out` — then climbed past it, rmdir'ing ancestors until one
   // was non-empty. Non-string entries are dropped for the same reason.
   const resolvedOut = path.resolve(out)
+
+  // Lexical containment is necessary but NOT sufficient: path.resolve
+  // normalises `..` and nothing else, so it cannot see a symlink. With
+  // `out/link` pointing outside the tree, `link/victim` passes every
+  // string test here while unlinkSync follows `link` straight out of
+  // it — and generated output is routinely a checked-out project, so
+  // the symlink is attacker-supplied in exactly the case that matters.
+  // The ANCESTOR is what has to be real: unlink does not follow a
+  // symlink at the final component (it removes the link itself), so
+  // resolving the containing directory closes the hole.
+  let realOut = resolvedOut
+  try { realOut = fs.realpathSync(resolvedOut) } catch (e) { /* new tree */ }
+  const under = (p, root) => p === root || p.startsWith(root + path.sep)
+  // Same rule for the prune loop below: it climbs from a deleted file's
+  // directory, so a symlinked ancestor would let rmdir walk out too.
+  const realDirUnder = (dir, root) => {
+    try { return under(fs.realpathSync(dir), root) } catch (e) { return false }
+  }
+
   const inside = (rel) => {
     if ('string' !== typeof rel) return false
     const abs = path.resolve(out, rel) // an absolute rel resolves to itself
-    return abs !== resolvedOut && abs.startsWith(resolvedOut + path.sep)
+    if (abs === resolvedOut || !abs.startsWith(resolvedOut + path.sep)) {
+      return false
+    }
+    let realDir
+    try {
+      realDir = fs.realpathSync(path.dirname(abs))
+    } catch (e) {
+      return false // cannot resolve it, so cannot vouch for it
+    }
+    return under(realDir, realOut)
   }
   const stale = previous.filter((rel) => inside(rel) && !files.has(rel))
 
@@ -892,7 +920,7 @@ function writeFiles(out, files) {
   // stop is sound; the containment re-check is belt-and-braces.
   for (const rel of stale) {
     let dir = path.dirname(path.join(out, rel))
-    while (path.resolve(dir) !== resolvedOut &&
+    while (realDirUnder(dir, realOut) && path.resolve(dir) !== resolvedOut &&
       path.resolve(dir).startsWith(resolvedOut + path.sep)) {
       try {
         fs.rmdirSync(dir) // fails (kept) unless empty

@@ -84,6 +84,23 @@ describe('lsp-registry-multiroot', () => {
     assert.equal(reg.resolve('mydsl', 'file:///c%3A/ws/alphabet/x.mydsl').entry, null)
   })
 
+  it('a POSIX folder whose name contains a backslash routes correctly', () => {
+    // On POSIX a backslash is an ordinary filename character, not a
+    // separator. contains() used to rewrite every backslash to a slash
+    // unconditionally — which turned the root `/work/a\\b` into
+    // `/work/a/b`, so the folder stopped containing its OWN documents
+    // and started claiming the unrelated `/work/a/b` tree instead.
+    const odd = ws('mydsl', '/work/a\\b')
+    const reg = new Registry([], [odd])
+
+    assert.ok(
+      reg.resolve('mydsl', 'file:///work/a%5Cb/x.mydsl').entry,
+      'backslash folder failed to match its own document')
+    assert.equal(
+      reg.resolve('mydsl', 'file:///work/a/b/x.mydsl').entry, null,
+      'backslash folder wrongly claimed the /work/a/b tree')
+  })
+
   it('an unscoped entry routes everywhere, including non-file documents', () => {
     // _scope null means session-wide (client-supplied languages);
     // _dir is only the sandbox base for relative grammar paths.

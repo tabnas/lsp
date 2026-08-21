@@ -365,6 +365,40 @@ describe('generate-unified', () => {
     assert.ok(fs.existsSync(precious), 'the prune loop climbed out of the output directory')
   })
 
+  it('a manifest cannot delete through a symlinked directory', () => {
+    // Lexical containment is not enough. path.resolve normalises `..`
+    // and nothing else, so with `out/link` pointing outside the tree an
+    // entry like `link/victim` passed every string test while
+    // unlinkSync followed `link` straight out. Generated output is
+    // routinely a checked-out project, which is exactly where an
+    // attacker-supplied symlink comes from.
+    const root = tmp('gen-symlink-')
+    const out = path.join(root, 'out')
+    const outside = path.join(root, 'outside')
+    fs.mkdirSync(out, { recursive: true })
+    fs.mkdirSync(outside, { recursive: true })
+    const victim = path.join(outside, 'victim.txt')
+    fs.writeFileSync(victim, 'do not delete me')
+
+    try {
+      fs.symlinkSync(outside, path.join(out, 'link'), 'dir')
+    } catch (e) {
+      return // no symlink privilege (unprivileged win32) — nothing to assert
+    }
+
+    fs.writeFileSync(path.join(out, '.tabnas-lsp-gen.json'), JSON.stringify({
+      generated: 'tabnas-lsp-gen',
+      files: ['link/victim.txt'],
+    }))
+
+    generate({ out, input: { spec: SPEC_FILE }, languageId: 'mydsl', editors: [] })
+
+    assert.ok(fs.existsSync(victim),
+      'a manifest entry deleted through a symlinked directory')
+    assert.ok(fs.existsSync(outside),
+      'the prune loop climbed out through a symlinked directory')
+  })
+
   it('the generated go.mod names no unpublished version', () => {
     // Every hardcoded version here was a guess, and both guesses were
     // wrong: github.com/tabnas/lsp/go v0.1.0 and parser/go v0.9.0 have

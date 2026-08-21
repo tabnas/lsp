@@ -82,9 +82,27 @@ function fsPathOf(uri) {
 // url.fileURLToPath, which yields BACKSLASHES on win32 — so on Windows
 // the two sides never matched and folder-scoped routing was dead. The
 // dir side is normalised to forward slashes before comparing.
+//
+// That rewrite applies only to paths that are actually WINDOWS-SHAPED
+// — a drive letter (`c:\ws\alpha`) or a UNC root (`\\srv\share`). The
+// discriminator is the path's shape, not process.platform, and both
+// halves of that choice are deliberate:
+//
+//   - Unconditional rewriting was wrong. On POSIX a backslash is an
+//     ordinary filename character, so a workspace rooted at `/work/a\b`
+//     stopped containing its own documents and started matching the
+//     unrelated `/work/a/b` tree instead.
+//   - Sniffing process.platform would be wrong too. Windows routing is
+//     tested on Linux (there is no win32 runner in this repo's matrix),
+//     and a platform gate makes that test vacuous on every host that
+//     runs it.
+const WINDOWSY = /^([A-Za-z]:|\\\\)/
+
 function contains(dir, fsPath) {
   if (null == dir || null == fsPath) return false
-  const d = String(dir).replace(/\\/g, '/').replace(/\/+$/, '')
+  let d = String(dir)
+  if (WINDOWSY.test(d)) d = d.replace(/\\/g, '/')
+  d = d.replace(/\/+$/, '')
   return fsPath === d || fsPath.startsWith(d + '/')
 }
 

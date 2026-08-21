@@ -398,6 +398,22 @@ TS is canonical; Go mirrors by **fixtures, not code sharing**:
   grammars); the fleet-wide diagnostics gate for checkouts with the
   grammars installed.
 
+**Parity is over the pipeline, not the feature set.** The two runtimes
+must agree on what a document *means* — diagnostics, outline, semantic
+tokens, completion — and that is what the fixtures pin. They are not
+the same product around it. The Go runtime is the embedded/generated
+server: its registry is a flat map of one entry per `languageId`, built
+once at startup. It has no workspace manifests, no folder scoping, and
+no hot reload, so the whole class of multi-root concerns — routing a
+document by its folder, keying an instance cache and a quarantine by
+`(entry, folder)`, releasing one folder's quarantine without disturbing
+another's — exists in `ts/` alone and has nothing to mirror in `go/`.
+
+A divergence in the pipeline is an engine or port bug (see
+`parser/DIVERGENCE.md`, TS canonical). A capability present only in
+`ts/` is this deliberate split, and belongs in §7's matrix rather than
+in a fixture.
+
 ## 14. Status and roadmap
 
 Shipped in this repo: the unified server (registry, routing, documents,
