@@ -25,7 +25,14 @@ function tmp(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 }
 
-const HAS_GO = 0 === spawnSync('go', ['version'], { stdio: 'ignore' }).status
+// The Go e2e case compiles and runs the generated Go server. Gated on
+// the toolchain being present AND not explicitly suppressed: hosted CI
+// runner images ship SOME Go, so a bare probe would run this against
+// an unpinned runner-image version in jobs that never asked for Go —
+// the lsp ci workflow sets TABNAS_LSP_GO_E2E=0 in its node job and
+// owns Go coverage in a pinned ci-go job.
+const HAS_GO = '0' !== process.env.TABNAS_LSP_GO_E2E &&
+  0 === spawnSync('go', ['version'], { stdio: 'ignore' }).status
 
 // A scripted LSP client session over stdio: spawn, send framed
 // messages (a number in the script is a pause in ms — the Node server

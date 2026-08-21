@@ -97,8 +97,11 @@ inherited here.
 
 ## Releasing
 
-Not yet wired: npm trusted publishing for `@tabnas/lsp` is maintainer
-action M8 in the admin notes (`rollout/setup-npm-trusted-publishing.sh`
-once the repo exists). Go releases follow the fleet's `go/vX.Y.Z` tag
-convention. The `VERSION` const in `go/lsp.go` and `ts/package.json`
-version move together.
+Releases run through the fleet orchestrator (`admin/publish.sh`, where
+`lsp` sits in the `ORDER` array after its `parser` dependency); npm
+trusted publishing is maintainer action M8 in the admin notes
+(`rollout/setup-npm-trusted-publishing.sh`). Go releases follow the
+fleet's `go/vX.Y.Z` tag convention. Three version sites move together
+— `ts/package.json`, `const VERSION` in `ts/src/core.js`, and
+`const VERSION` in `go/lsp.go` — with drift caught by
+`ts/test/version.test.js` and `go/version_test.go`.

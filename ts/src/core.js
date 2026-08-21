@@ -7,6 +7,12 @@
 // front-end over this module, keeping the byte-parity discipline with
 // the CLI/MCP surfaces possible.
 
+// VERSION must equal package.json "version" (test/version.test.js) and
+// the Go const in go/lsp.go (go/version_test.go): the release
+// orchestrator rewrites all three together, and the tests are what
+// turn a missed rewrite into a failure instead of a silent drift.
+const VERSION = '0.1.0'
+
 // Default engine-token -> LSP semantic-token-type map, sourced from
 // railroad's CANON key set (engine-standard tokens only; #ID is
 // per-plugin and comes from registry overrides), plus the prefix
@@ -263,6 +269,7 @@ function fixedSource(inst, name) {
 }
 
 module.exports = {
+  VERSION,
   analyze,
   completion,
   diagnostics,
