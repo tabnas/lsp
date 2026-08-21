@@ -1,57 +1,58 @@
 # Target: tabnas/lsp -> .github/workflows/release.yml
 #
-# Publishes @tabnas/lsp to npm on a `ts/v*` tag push, via GitHub OIDC
-# Trusted Publishing (no token). Adapted from parser's release.yml — the
-# fleet's standard shape — and layout-compatible as written: lsp's
-# package also lives in `ts/`, and `npm run build --if-present` no-ops
-# because @tabnas/lsp declares no build script (it ships plain CommonJS).
+# Publishes @tabnas/lsp to npm via GitHub OIDC Trusted Publishing (no
+# token), and writes the release tags. Two triggers:
 #
-# WITHOUT this file the release orchestrator cannot publish lsp at all,
-# and fails the whole wave rather than skipping: admin/publish.sh pushes
-# `go/v$NEW`, then `ts/v$NEW`, then waits on `wait_npm` for ten minutes
-# before `FAIL <repo>: npm did not report $NEW (check release.yml run)`
-# and `exit 1`. The tag lands, nothing publishes, and every repo after
-# lsp in ORDER is skipped. `lsp` sits at position 32 of 33, so `chess`
-# is the one left behind.
+#   workflow_dispatch  the normal path. Bump the versions first in a
+#                      reviewed PR; this run reads what is already on
+#                      main, publishes it, and tags it. The workflow
+#                      never commits, so the bump stays a diff someone
+#                      approved and the release stays a button.
+#   push: ts/v*        the orchestrator path. admin/publish.sh pushes
+#                      the tag itself, so the tag steps are no-ops and
+#                      only the publish runs.
 #
-# BOOTSTRAP — necessary but NOT sufficient for the FIRST release.
-# Tokenless OIDC needs an npm trusted-publisher record, and `npm trust`
-# cannot create one for a package that does not exist yet:
-# rollout/setup-npm-trusted-publishing.sh skips unpublished packages by
-# design, exactly as it already does for c and css. @tabnas/lsp is 404
-# on the registry today, so a `ts/v*` tag pushed before the package
-# exists fails authentication in this job and strands the wave at
-# wait_npm — the very failure this file exists to prevent. The first
-# publish must therefore be made out of band (lsp's `make publish-ts`,
-# under a maintainer account with 2FA) and the trust record registered
-# immediately after, BEFORE the wave runs. See M8 in
-# notes/2026-08-17-unified-lsp-maintainer-actions.md, which sequences it.
+# WHY THE TAGGING LIVES IN THIS FILE, rather than a workflow of its own.
+# npm allows exactly ONE workflow file per trusted publisher: the entry
+# registered on npmjs.com names owner, repo and a single filename, and
+# there is no second slot. Only that file can publish. So anything that
+# must accompany a publish has to live inside it. An OIDC token from an
+# unregistered workflow is rejected as:
 #
-# One quirk of this repo, measured rather than assumed. lsp/ts carries
-# `"@tabnas/parser": "file:../../parser/ts"` as a devDependency, and
-# that sibling does NOT exist in a standalone single-repo checkout. In
-# that situation `npm i` still EXITS 0 — it creates
-# node_modules/@tabnas/parser as a DANGLING SYMLINK — so this job is
-# safe as written only because it neither builds nor tests: the package
-# ships plain CommonJS, `npm run build --if-present` no-ops, and the
-# published tarball carries only bin/src/data/tools with the engine as
-# an open peer, so the dangling dev link never reaches a consumer.
+#   npm error 404 Not Found - PUT https://registry.npmjs.org/@tabnas%2flsp
 #
-# The consequence for anyone editing this file: do NOT add a build or
-# test step here expecting it to work. It would `require('@tabnas/
-# parser')` through that dead symlink and fail.
+# — 404, not 403, so as not to leak whether a package exists. That reads
+# as "no such package", which is nonsense, and costs an hour to the
+# wrong hypothesis. Renaming this file breaks publishing until the
+# npm-side entry is updated to match.
 #
-# What actually gates a release, stated precisely because it is easy to
-# assume more: admin/publish.sh step 3 verifies build+test LOCALLY
-# against published deps, in both runtimes, before tagging. It does NOT
-# require green CI before tagging — that check is deferred to the end of
-# the whole run ("CI is NOT waited on here", publish.sh step 4), because
-# blocking per repo made the wave hostage to the runner queue. The tag
-# push and the npm publish therefore happen BEFORE the cross-platform
-# matrix (macOS, Windows) is known, and npm versions are immutable: a
-# red deferred result is rolled forward with a fix, never retracted.
-# That is the reason no verification step belongs in this workflow —
-# not that CI already gated it.
+# TWO CREDENTIALS, AND NEITHER CAN DO THE OTHER'S JOB:
+#
+#   id-token: write   OIDC, exchanged for a short-lived credential AT
+#                     NPM. Publishes. CANNOT create a tag — its audience
+#                     is the registry, not GitHub.
+#   contents: write   the per-run GITHUB_TOKEN. Writes tags.
+#
+# And they cannot be split across two workflows for a second reason: a
+# ref pushed with GITHUB_TOKEN does NOT start another workflow run
+# (GitHub suppresses that so workflows cannot trigger themselves). So
+# "tag in workflow A, let the publisher fire on the tag" publishes
+# nothing, silently.
+#
+# NO BUILD OR TEST STEP HERE, and that is deliberate for THIS repo — do
+# not add one by analogy with other repos' release gates. lsp/ts carries
+# `"@tabnas/parser": "file:../../parser/ts"` as a devDependency, and that
+# sibling does not exist in a standalone checkout. `npm i` still EXITS 0
+# — it creates node_modules/@tabnas/parser as a DANGLING SYMLINK — so a
+# test step would `require` through a dead link and fail. The published
+# tarball carries only bin/src/data/tools with the engine as an open
+# peer, so the dangling dev link never reaches a consumer.
+#
+# What gates a release instead: ci.yml runs the full matrix on the PR
+# that bumps the version. admin/publish.sh additionally verifies
+# build+test locally against PUBLISHED deps before tagging, but does NOT
+# require green CI first — that check is deferred to the end of its run
+# ("CI is NOT waited on here", publish.sh step 4).
 #
 # Actions are pinned to full commit SHAs with the corresponding release
 # as a trailing comment, on the lowest major whose `runs.using` is
@@ -61,6 +62,12 @@
 name: release
 
 on:
+  workflow_dispatch:
+    inputs:
+      go:
+        description: 'Also tag the Go module (go/v<version>)'
+        type: boolean
+        default: true
   push:
     tags:
       - 'ts/v*'
@@ -72,18 +79,87 @@ jobs:
   publish-npm:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      id-token: write   # OIDC -> npm
+      contents: write   # GITHUB_TOKEN -> tags
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0   # tags, for the already-released guard
+
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Build and publish to npm (OIDC trusted publishing)
+
+      # lsp keeps ONE version across ts/package.json, the VERSION const
+      # in ts/src/core.js and the VERSION const in go/lsp.go, gated by
+      # version.test.js and version_test.go. package.json is the source.
+      - name: Read the version
+        id: v
+        run: |
+          V="$(node -p "require('./ts/package.json').version")"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Releasing $V"
+
+      # Fails closed: an existing tag means the version was not bumped.
+      # Skipped on the tag-push path, where the ts/v* tag necessarily
+      # exists already — it is what triggered the run.
+      - name: Refuse a version that is already tagged
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/ts/v$V" >/dev/null; then
+            echo "::error::ts/v$V already exists — bump the version first"
+            exit 1
+          fi
+
+      # Fails OPEN, on purpose. The REGISTRY is the source of truth for
+      # "is this released", not the tag: a run can publish and then fail
+      # before tagging, leaving a version on npm with nothing pointing at
+      # it. Without this check that state is unrecoverable, because the
+      # publish step dies on "cannot publish over the previously
+      # published versions" before ever reaching the tag steps.
+      # Publishing only what is missing, and tagging either way, makes a
+      # re-dispatch idempotent and able to reconcile a half-done release.
+      - name: Publish to npm if the version is missing (OIDC)
         working-directory: ts
         run: |
+          V="${{ steps.v.outputs.version }}"
           npm install -g npm@latest
-          npm i
-          npm run build --if-present
-          npm publish --access public
+          if npm view "@tabnas/lsp@$V" version >/dev/null 2>&1; then
+            echo "@tabnas/lsp@$V is already on npm — skipping publish"
+          else
+            npm i
+            npm run build --if-present
+            npm publish --access public
+          fi
+
+      # Tagging runs AFTER publishing, so a tag only ever exists for a
+      # release that actually reached the registry. A failed publish
+      # writes no tag and the dispatch can simply be re-run.
+      - name: Tag the release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git tag "ts/v$V"
+          git push origin "ts/v$V"
+
+          # The Go module has no registry upload step: proxy.golang.org
+          # serves whatever the tag points at, so PUSHING THE TAG IS THE
+          # RELEASE, and it cannot be undone — the proxy caches module
+          # versions immutably. A go/vX.Y.Z that names the wrong commit
+          # is permanent; bump to the next patch rather than trying to
+          # move it.
+          if [ "${{ inputs.go }}" = "true" ]; then
+            if git rev-parse -q --verify "refs/tags/go/v$V" >/dev/null; then
+              echo "go/v$V already exists — leaving it alone"
+            else
+              git tag "go/v$V"
+              git push origin "go/v$V"
+            fi
+          fi
