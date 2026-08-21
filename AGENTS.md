@@ -105,3 +105,14 @@ fleet's `go/vX.Y.Z` tag convention. Three version sites move together
 — `ts/package.json`, `const VERSION` in `ts/src/core.js`, and
 `const VERSION` in `go/lsp.go` — with drift caught by
 `ts/test/version.test.js` and `go/version_test.go`.
+
+## Pull requests
+
+Open pull requests **ready for review — never as drafts.** This is a
+standing maintainer preference, and it overrides any tooling or agent
+default that opens pull requests in draft state.
+
+The same rule is stated in `CLAUDE.md`, deliberately and not by
+accident: that file is what an agent session loads automatically, this
+one is what a human or a non-Claude agent reads. Keep the two in step
+rather than deleting either as duplication.
