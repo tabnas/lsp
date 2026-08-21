@@ -341,6 +341,120 @@ describe('generate-unified', () => {
     assert.ok(ext.includes("'mydsl.serverPath'") || ext.includes('"mydsl.serverPath"'), ext)
   })
 
+  it('a manifest cannot delete outside the output directory', () => {
+    // The manifest is a file on disk, so it is INPUT: hand-edited,
+    // badly merged, or written by an older version. An entry like
+    // '../precious/keep.txt' used to be unlinked, and the prune loop —
+    // which stopped only on exact equality with `out` — then climbed
+    // past `out`, rmdir'ing ancestors until one was non-empty.
+    const root = tmp('gen-esc-')
+    const out = path.join(root, 'out')
+    const precious = path.join(root, 'precious')
+    fs.mkdirSync(out, { recursive: true })
+    fs.mkdirSync(precious, { recursive: true })
+    const keep = path.join(precious, 'keep.txt')
+    fs.writeFileSync(keep, 'do not delete me')
+    fs.writeFileSync(path.join(out, '.tabnas-lsp-gen.json'), JSON.stringify({
+      generated: 'tabnas-lsp-gen',
+      files: ['../precious/keep.txt', path.join(root, 'precious', 'keep.txt'), 42, null],
+    }))
+
+    generate({ out, input: { spec: SPEC_FILE }, languageId: 'mydsl', editors: [] })
+
+    assert.ok(fs.existsSync(keep), 'a manifest entry escaped the output directory')
+    assert.ok(fs.existsSync(precious), 'the prune loop climbed out of the output directory')
+  })
+
+  it('supplied engine versions are pinned in the generated go.mod', () => {
+    // Omitting requires keeps the module BUILDABLE (a guessed version
+    // 404s and tidy fails outright), but it is not reproducible: tidy
+    // resolves from whatever the proxy serves when it runs, so the same
+    // output can build against a different engine later and parse
+    // differently. A caller that knows the versions — the release wave
+    // does — can pin them.
+    const out = tmp('gen-gopin-')
+    generate({
+      out,
+      input: { spec: SPEC_FILE },
+      languageId: 'mydsl',
+      runtime: 'go',
+      editors: [],
+      goLspVersion: 'v0.3.1',
+      goParserVersion: 'v0.9.4',
+    })
+    const mod = fs.readFileSync(path.join(out, 'server', 'go.mod'), 'utf8')
+    assert.match(mod, /require github\.com\/tabnas\/lsp\/go v0\.3\.1/)
+    assert.match(mod, /require github\.com\/tabnas\/parser\/go v0\.9\.4/)
+    assert.match(mod, /pinned/)
+
+    // ...and the default still names no version at all.
+    const bare = tmp('gen-gobare-')
+    generate({
+      out: bare,
+      input: { spec: SPEC_FILE },
+      languageId: 'mydsl',
+      runtime: 'go',
+      editors: [],
+    })
+    const bareMod = fs.readFileSync(path.join(bare, 'server', 'go.mod'), 'utf8')
+    assert.equal(/^require /m.test(bareMod), false, bareMod)
+  })
+
+  it('a manifest cannot delete through a symlinked directory', () => {
+    // Lexical containment is not enough. path.resolve normalises `..`
+    // and nothing else, so with `out/link` pointing outside the tree an
+    // entry like `link/victim` passed every string test while
+    // unlinkSync followed `link` straight out. Generated output is
+    // routinely a checked-out project, which is exactly where an
+    // attacker-supplied symlink comes from.
+    const root = tmp('gen-symlink-')
+    const out = path.join(root, 'out')
+    const outside = path.join(root, 'outside')
+    fs.mkdirSync(out, { recursive: true })
+    fs.mkdirSync(outside, { recursive: true })
+    const victim = path.join(outside, 'victim.txt')
+    fs.writeFileSync(victim, 'do not delete me')
+
+    try {
+      fs.symlinkSync(outside, path.join(out, 'link'), 'dir')
+    } catch (e) {
+      return // no symlink privilege (unprivileged win32) — nothing to assert
+    }
+
+    fs.writeFileSync(path.join(out, '.tabnas-lsp-gen.json'), JSON.stringify({
+      generated: 'tabnas-lsp-gen',
+      files: ['link/victim.txt'],
+    }))
+
+    generate({ out, input: { spec: SPEC_FILE }, languageId: 'mydsl', editors: [] })
+
+    assert.ok(fs.existsSync(victim),
+      'a manifest entry deleted through a symlinked directory')
+    assert.ok(fs.existsSync(outside),
+      'the prune loop climbed out through a symlinked directory')
+  })
+
+  it('the generated go.mod names no unpublished version', () => {
+    // Every hardcoded version here was a guess, and both guesses were
+    // wrong: github.com/tabnas/lsp/go v0.1.0 and parser/go v0.9.0 have
+    // never been published, so `go mod tidy` — the documented first
+    // step — failed outright and every generated Go server was dead on
+    // arrival. Requirements come from `go mod tidy` over main.go's
+    // imports instead.
+    const out = tmp('gen-gomod-')
+    generate({
+      out, input: { spec: SPEC_FILE }, languageId: 'mydsl',
+      runtime: 'go', editors: [],
+    })
+    const goMod = fs.readFileSync(path.join(out, 'server', 'go.mod'), 'utf8')
+    assert.ok(!/^\s*require\s+github\.com\/tabnas\/(lsp|parser)\/go\s/m.test(goMod),
+      'go.mod pins a fleet module version the generator only guessed:\n' + goMod)
+    assert.ok(!goMod.includes('v0.9.0') && !goMod.includes('v0.1.0'), goMod)
+    // main.go still imports them, which is what tidy resolves from.
+    const mainGo = fs.readFileSync(path.join(out, 'server', 'main.go'), 'utf8')
+    assert.ok(mainGo.includes('github.com/tabnas/lsp/go'))
+  })
+
   it('regeneration deletes files the previous run owned', () => {
     // Overwrite-only regeneration leaves a removed language's files in
     // place — stale artifacts that still ship, and a staleness gate

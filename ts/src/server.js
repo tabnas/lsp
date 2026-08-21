@@ -96,10 +96,16 @@ function startServer(opts) {
       if ('workspace' === e._source) instances.invalidate(e)
     }
     const workspace = []
+    // Client-supplied entries are session-wide: _dir gives their
+    // relative grammar paths a sandbox base, but _scope is null so they
+    // route in EVERY folder. Scoping them to folder[0] (the old
+    // behaviour) made them dead in every other root of a multi-root
+    // session, and dead everywhere at all when the client sent no
+    // folders, since the base then fell back to the server's cwd.
     const defaultDir = workspaceFolders[0] || process.cwd()
     for (const e of initLangs) {
       workspace.push(Object.assign(
-        { _source: 'workspace', _dir: defaultDir }, e))
+        { _source: 'workspace', _dir: defaultDir }, e, { _scope: null }))
     }
     for (const folder of workspaceFolders) {
       workspace.push(...readWorkspaceManifest(folder, (msg) =>
@@ -152,12 +158,18 @@ function startServer(opts) {
   connection.onInitialized(() => {
     // Watch workspace grammar sources so the L4 dev loop works: an
     // edited spec/BNF file rebuilds its instance and re-analyzes open
-    // documents. Registration is best-effort — plain clients without
-    // dynamic registration simply do not get hot reload.
-    const watched = registry.all().filter(
-      (e) => 'workspace' === e._source &&
-        (null != e.load?.grammar || 'string' === typeof e.load?.spec))
-    if (0 === watched.length) return
+    // documents, and an edited manifest rebuilds the registry tier.
+    // Registration is best-effort — plain clients without dynamic
+    // registration simply do not get hot reload.
+    //
+    // Registering whenever there is a workspace folder, NOT only when
+    // some entry already names a grammar file: the manifest watcher
+    // lives in this same registration, so gating it on existing
+    // file-backed entries meant a workspace with no manifest (or one
+    // declaring only `load:{module}` entries) never watched the
+    // manifest — and so could never pick up a language ADDED to it.
+    // The first manifest is exactly when hot reload matters most.
+    if (0 === workspaceFolders.length) return
     try {
       connection.client.register(lsp.DidChangeWatchedFilesNotification.type, {
         watchers: [
@@ -284,8 +296,14 @@ function startServer(opts) {
         const start = doc.offsetAt(change.range.start)
         const end = doc.offsetAt(change.range.end)
         text = text.substring(0, start) + change.text + text.substring(end)
-        doc.update(text, doc.version) // keep line index fresh mid-loop
       }
+      // After EVERY change, not only ranged ones. A didChange array may
+      // legally mix a full replacement with later ranged edits, and the
+      // replacement branch used to leave doc (and its line index) on the
+      // PREVIOUS text — so the next ranged edit computed offsets against
+      // a document that no longer existed, silently corrupting the text
+      // here and panicking the Go port on the same input.
+      doc.update(text, doc.version) // keep line index fresh mid-loop
     }
     doc.update(text, p.textDocument.version)
     lastGood.delete(p.textDocument.uri) // suppress stale structural results
@@ -303,8 +321,19 @@ function startServer(opts) {
     if (!doc) return []
     const entry = entryFor(doc)
     if (!entry) return []
-    const inst = instances.get(entry)
-    if (!inst) return []
+    // instances.get RETHROWS a grammar load failure (after counting it
+    // toward quarantine). run() has always caught that and logged; here
+    // it escaped the handler and surfaced to the client as an
+    // InternalError on every keystroke of a broken grammar.
+    let inst
+    try {
+      inst = instances.get(entry)
+    } catch (e) {
+      connection.console.error(
+        'tabnas-lsp: grammar load failed (' + entry.languageId + '): ' + e.message)
+      return []
+    }
+    if (!inst) return [] // quarantined
     return core.completion(inst, entry, doc, p.position)
   })
 

@@ -101,3 +101,45 @@ func TestServerUnknownMethod(t *testing.T) {
 		t.Fatal("unknown request did not get MethodNotFound")
 	}
 }
+
+func TestDidChangeMixedFullAndRanged(t *testing.T) {
+	// A didChange array may legally carry a full replacement followed by
+	// ranged edits. The replacement branch used to leave the stored
+	// document (and its line index) on the PREVIOUS text, so the next
+	// ranged edit computed BYTE offsets from a document that no longer
+	// existed — and on a shrinking replacement that slices out of range
+	// and panics the whole server. Mirrors the TS case "a full
+	// replacement mixed with a ranged edit keeps the line index live".
+	entry, makeInst := EntryFromSpecJSON("jsonf", []string{".jsonf"}, fixture(t, "json-grammar.json"))
+
+	in := frame(
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
+		`{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{`+
+			`"textDocument":{"uri":"file:///t.jsonf","languageId":"jsonf",`+
+			`"version":1,"text":"aaa\nbbb\nccc"}}}`,
+		`{"jsonrpc":"2.0","method":"textDocument/didChange","params":{`+
+			`"textDocument":{"uri":"file:///t.jsonf","version":2},`+
+			`"contentChanges":[{"text":"x\ny"},`+
+			`{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":0}},`+
+			`"text":"Z"}]}}`,
+		`{"jsonrpc":"2.0","method":"exit"}`,
+	)
+	var out bytes.Buffer
+
+	s := NewServer(Config{
+		Entries: []*Entry{entry}, MakeInstance: makeInst,
+		In: in, Out: &out, Logf: func(string, ...any) {},
+	})
+	// Run must not panic: before the fix this died with
+	// "slice bounds out of range" inside the didChange handler.
+	if err := s.Run(); err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+	doc := s.docs.Get("file:///t.jsonf")
+	if nil == doc {
+		t.Fatal("document missing after didChange")
+	}
+	if "x\nZy" != doc.Text {
+		t.Fatalf("text = %q, want %q", doc.Text, "x\nZy")
+	}
+}

@@ -35,21 +35,47 @@ publish-ts: test-ts
 	cd ts && npm publish --access public
 
 # --- Go (module in go/) ---
-# The go/ module requires github.com/tabnas/parser/go at a floor
-# version; local dev and CI point it at the sibling checkout with a
-# go.work instead of a committed replace (a committed replace would
-# break `go install` consumers).
+# The go/ module requires github.com/tabnas/parser/go at a pinned
+# pseudo-version the proxy serves, so it builds on its own. A sibling
+# parser checkout is used INSTEAD when one is present, which is the
+# fleet dev loop: engine changes are picked up without a release.
+#
+# GOWORK is always set explicitly, and that is load-bearing. Go searches
+# UPWARD for a go.work, so in a fleet checkout — where the maintainer
+# keeps a repo-set go.work at the root — a bare `go build` here resolved
+# against that file, which does not list this newer module, and failed
+# with "directory prefix . does not contain modules listed in go.work".
+# For the same reason `go work init` cannot be used to create ours: it
+# refuses outright while ANY parent go.work exists ("go: <root>/go.work
+# already exists"), so this target passes GOWORK to the init too.
+#
+# go/go.work is generated, never committed (.gitignore).
+PARSER_GO := $(abspath $(CURDIR)/../parser/go)
+GO_WORK   := $(CURDIR)/go/go.work
+
 go-work:
-	cd go && go work init . ../../parser/go 2>/dev/null || true
+ifneq ($(wildcard $(PARSER_GO)/go.mod),)
+	@test -f $(GO_WORK) || \
+	  ( cd go && GOWORK=$(GO_WORK) go work init . $(PARSER_GO) )
+	@echo "go: using sibling engine at $(PARSER_GO)"
+else
+	@rm -f $(GO_WORK)
+	@echo "go: no sibling parser checkout — using the pinned engine from go.mod"
+endif
+
+# GOWORK=off when there is no sibling: it stops an unrelated parent
+# go.work from being picked up, and the committed go.sum makes the
+# pinned build reproducible.
+GOW = $(if $(wildcard $(PARSER_GO)/go.mod),GOWORK=$(GO_WORK),GOWORK=off)
 
 build-go: go-work
-	cd go && go build ./...
+	cd go && $(GOW) go build ./...
 
 test-go: go-work
-	cd go && go test ./...
+	cd go && $(GOW) go vet ./... && $(GOW) go test ./...
 
 clean-go:
-	cd go && go clean && rm -f go.work go.work.sum
+	cd go && GOWORK=off go clean && rm -f go.work go.work.sum
 
 # --- Generated data (ts/data/*.json) ---
 # Both generators walk the fleet checkout (sibling repos of this one)

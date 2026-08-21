@@ -24,7 +24,7 @@
     "vscode-languageserver-textdocument": "^1.0.11"
   },
   "peerDependencies": {
-    "@tabnas/parser": ">=0.9.0"
+    "@tabnas/parser": ">=0"
   },
   "devDependencies": {
     "@tabnas/parser": "file:../../parser/ts"

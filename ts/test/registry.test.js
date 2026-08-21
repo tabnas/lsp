@@ -69,6 +69,55 @@ describe('lsp-registry-multiroot', () => {
       reg.resolve('plaintext', 'file:///other/doc.mydsl').entry, null)
   })
 
+  it('a Windows folder path matches its documents', () => {
+    // The two sides of the containment test come from different
+    // converters: fsPathOf() always yields forward slashes, while the
+    // folder side comes from url.fileURLToPath, which yields
+    // BACKSLASHES on win32. Unnormalised, they never matched and
+    // folder-scoped routing was dead on Windows.
+    const winFolder = 'c:\\ws\\alpha'
+    const reg = new Registry([], [ws('mydsl', winFolder)])
+    const r = reg.resolve('mydsl', 'file:///c%3A/ws/alpha/x.mydsl')
+    assert.ok(r.entry, 'windows folder failed to match its own document')
+    assert.equal(r.entry.languageId, 'mydsl')
+    // Still not a sibling-prefix match.
+    assert.equal(reg.resolve('mydsl', 'file:///c%3A/ws/alphabet/x.mydsl').entry, null)
+  })
+
+  it('a POSIX folder whose name contains a backslash routes correctly', () => {
+    // On POSIX a backslash is an ordinary filename character, not a
+    // separator. contains() used to rewrite every backslash to a slash
+    // unconditionally — which turned the root `/work/a\\b` into
+    // `/work/a/b`, so the folder stopped containing its OWN documents
+    // and started claiming the unrelated `/work/a/b` tree instead.
+    const odd = ws('mydsl', '/work/a\\b')
+    const reg = new Registry([], [odd])
+
+    assert.ok(
+      reg.resolve('mydsl', 'file:///work/a%5Cb/x.mydsl').entry,
+      'backslash folder failed to match its own document')
+    assert.equal(
+      reg.resolve('mydsl', 'file:///work/a/b/x.mydsl').entry, null,
+      'backslash folder wrongly claimed the /work/a/b tree')
+  })
+
+  it('an unscoped entry routes everywhere, including non-file documents', () => {
+    // _scope null means session-wide (client-supplied languages);
+    // _dir is only the sandbox base for relative grammar paths.
+    const anywhere = Object.assign(ws('mydsl', '/ws/alpha'), { _scope: null })
+    const reg = new Registry(BUNDLED, [anywhere])
+    assert.equal(reg.resolve('mydsl', 'file:///ws/beta/x.mydsl').entry.languageId, 'mydsl')
+    assert.equal(reg.resolve('mydsl', 'untitled:Untitled-1').entry.languageId, 'mydsl')
+  })
+
+  it('a folder-scoped entry beats an unscoped one inside its folder', () => {
+    const scoped = ws('mydsl', '/ws/alpha')
+    const global_ = Object.assign(ws('mydsl', '/ws/alpha'), { _scope: null, name: 'global' })
+    const reg = new Registry([], [global_, scoped])
+    assert.equal(reg.resolve('mydsl', 'file:///ws/alpha/x.mydsl').entry.name, 'mydsl')
+    assert.equal(reg.resolve('mydsl', 'file:///elsewhere/x.mydsl').entry.name, 'global')
+  })
+
   it('non-file documents never match workspace entries', () => {
     const a = ws('mydsl', '/ws/alpha')
     const reg = new Registry(BUNDLED, [a])

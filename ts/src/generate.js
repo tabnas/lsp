@@ -231,7 +231,11 @@ function emitNodeServer(lang, files, req) {
   const deps = {
     '@tabnas/lsp': depVersion(req, '@tabnas/lsp',
       require('../package.json').version),
-    '@tabnas/parser': depVersion(req, '@tabnas/parser', '>=0.9.0'),
+    // Fleet convention (admin/publish.sh): every @tabnas peer/floor is
+    // ">=0" so installs resolve the latest published engine. Only an
+    // exact version we RESOLVED is worth pinning; a typed floor is a
+    // guess, and ">=0.9.0" was one that no published parser satisfied.
+    '@tabnas/parser': depVersion(req, '@tabnas/parser', '>=0'),
   }
   const entry = {
     name: lang.id,
@@ -346,26 +350,52 @@ function emitGoServer(lang, opts, files) {
   }
 
   const goModule = opts.goModule || 'example.com/' + lang.id + '-lsp'
-  const requires = [
-    'require (',
-    '\tgithub.com/tabnas/lsp/go v0.1.0',
-    '\tgithub.com/tabnas/parser/go v0.9.0',
-  ]
-  // The plugin module's require is emitted only with a real version
-  // (--go-plugin-version): a fabricated v0.0.0 does not exist and
-  // fails the documented `go mod tidy`, which otherwise resolves and
-  // adds the requirement itself from the import (or from a replace).
-  // The import path is preserved exactly — semantic-import /vN
-  // suffixes included.
-  if (opts.goPlugin && opts.goPluginVersion) {
-    requires.push('\t' + opts.goPlugin + ' ' + opts.goPluginVersion)
+
+  // NO hardcoded requires. A version written here is a guess about what
+  // is published, and a guess that is wrong makes the generated module
+  // unbuildable: `go mod tidy` fails outright on a require the proxy
+  // 404s. This generator emitted `github.com/tabnas/lsp/go v0.1.0` and
+  // `github.com/tabnas/parser/go v0.9.0`, and NEITHER has ever been
+  // published — every generated Go server was dead on arrival.
+  //
+  // `go mod tidy` resolves both from the imports in main.go, which is
+  // the only shape that self-heals as the fleet releases. The same rule
+  // already governs the plugin module below; it now governs all three.
+  // A version the CALLER supplies is not a guess, so it is pinned. This
+  // is how a generated module becomes reproducible: with nothing pinned,
+  // `go mod tidy` resolves from whatever the proxy serves at the moment
+  // it runs, so the same generator output can build against a different
+  // engine next month and quietly parse differently — which is the
+  // opposite of what design.md §7.1 promises. Omitting the requires is
+  // still the DEFAULT, because the alternative this code shipped with
+  // was a guessed version that 404'd and made every generated server
+  // unbuildable. Pinned when known, floating when not, and the emitted
+  // comment says which of the two happened.
+  const pins = [
+    [opts.goPlugin, opts.goPluginVersion],
+    ['github.com/tabnas/lsp/go', opts.goLspVersion],
+    ['github.com/tabnas/parser/go', opts.goParserVersion],
+  ].filter(([mod, ver]) => mod && ver)
+
+  const requires = []
+  for (const [mod, ver] of pins) {
+    // The import path is preserved exactly, /vN suffixes included.
+    requires.push('require ' + mod + ' ' + ver)
   }
+  if (0 < pins.length) requires.push('')
+
   requires.push(
-    ')',
-    '',
-    '// Version floors above are minimums — `go mod tidy` resolves real',
-    '// versions. For unreleased local checkouts use replace directives',
-    '// (or pass --go-replace to the generator):',
+    0 < pins.length
+      ? '// The requirements above are pinned; anything else is resolved'
+      : '// Requirements are resolved by `go mod tidy` from the imports in',
+    0 < pins.length
+      ? '// by `go mod tidy` from the imports in main.go — run it before'
+      : '// main.go — run it before the first build (the README says so).',
+    0 < pins.length
+      ? '// the first build (the README says so).'
+      : '// Pass --go-lsp-version/--go-parser-version to pin them instead.',
+    '// For unreleased local checkouts, add replace directives (or pass',
+    '// --go-replace to the generator):',
   )
   for (const r of opts.goReplace || []) {
     const [mod, dir] = String(r).split('=')
@@ -854,7 +884,51 @@ function writeFiles(out, files) {
   } catch (e) {
     // no previous run
   }
-  const stale = previous.filter((rel) => !files.has(rel))
+
+  // The manifest is a FILE ON DISK, so it is input, not a trusted
+  // record: it can be hand-edited, merged badly, or written by an older
+  // version. Every entry is therefore contained to `out` before
+  // anything is unlinked. Without this, an entry like
+  // '../precious/keep.txt' deleted a file outside the output directory,
+  // and the prune loop below — which stopped only on EXACT equality
+  // with `out` — then climbed past it, rmdir'ing ancestors until one
+  // was non-empty. Non-string entries are dropped for the same reason.
+  const resolvedOut = path.resolve(out)
+
+  // Lexical containment is necessary but NOT sufficient: path.resolve
+  // normalises `..` and nothing else, so it cannot see a symlink. With
+  // `out/link` pointing outside the tree, `link/victim` passes every
+  // string test here while unlinkSync follows `link` straight out of
+  // it — and generated output is routinely a checked-out project, so
+  // the symlink is attacker-supplied in exactly the case that matters.
+  // The ANCESTOR is what has to be real: unlink does not follow a
+  // symlink at the final component (it removes the link itself), so
+  // resolving the containing directory closes the hole.
+  let realOut = resolvedOut
+  try { realOut = fs.realpathSync(resolvedOut) } catch (e) { /* new tree */ }
+  const under = (p, root) => p === root || p.startsWith(root + path.sep)
+  // Same rule for the prune loop below: it climbs from a deleted file's
+  // directory, so a symlinked ancestor would let rmdir walk out too.
+  const realDirUnder = (dir, root) => {
+    try { return under(fs.realpathSync(dir), root) } catch (e) { return false }
+  }
+
+  const inside = (rel) => {
+    if ('string' !== typeof rel) return false
+    const abs = path.resolve(out, rel) // an absolute rel resolves to itself
+    if (abs === resolvedOut || !abs.startsWith(resolvedOut + path.sep)) {
+      return false
+    }
+    let realDir
+    try {
+      realDir = fs.realpathSync(path.dirname(abs))
+    } catch (e) {
+      return false // cannot resolve it, so cannot vouch for it
+    }
+    return under(realDir, realOut)
+  }
+  const stale = previous.filter((rel) => inside(rel) && !files.has(rel))
+
   for (const rel of stale) {
     try {
       fs.unlinkSync(path.join(out, rel))
@@ -862,11 +936,13 @@ function writeFiles(out, files) {
       // already gone
     }
   }
-  // Prune directories the deletions emptied.
+  // Prune directories the deletions emptied. Every `dir` here descends
+  // from `out` by construction (stale is contained), so the equality
+  // stop is sound; the containment re-check is belt-and-braces.
   for (const rel of stale) {
     let dir = path.dirname(path.join(out, rel))
-    const stop = path.resolve(out)
-    while (path.resolve(dir) !== stop) {
+    while (realDirUnder(dir, realOut) && path.resolve(dir) !== resolvedOut &&
+      path.resolve(dir).startsWith(resolvedOut + path.sep)) {
       try {
         fs.rmdirSync(dir) // fails (kept) unless empty
       } catch (e) {

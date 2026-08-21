@@ -226,6 +226,17 @@ Three audiences the unified server cannot serve:
   the unified server tracks its registry. CI and reproducible-tooling
   contexts want the former.
 
+  This one is only as strong as what the caller supplies, and the
+  README should not be read as promising more. The Node lane resolves
+  real versions and emits them. The Go lane cannot: the generator has
+  no network, and the version it used to guess was unpublished, so
+  `go mod tidy` failed and every generated server was unbuildable.
+  The default is therefore an UNPINNED `go.mod` whose requirements
+  `go mod tidy` resolves from `main.go`'s imports — buildable always,
+  reproducible only until the proxy moves. Pass `--go-lsp-version` and
+  `--go-parser-version` (as the release wave can) to pin them, and the
+  emitted comment states which of the two happened.
+
 ### 7.2 Inputs and runtime matrix
 
 The generator accepts one grammar, in any of four forms, and emits a
@@ -337,13 +348,21 @@ rules) runs before any engine load:
 5. schema-`v` gate against the engine's `BUILTIN_SCHEMA_VERSION`;
 6. composition-aware trial load against the entry's declared stack.
 
-Beyond the firewall: parse budgets/cancellation bound ReDoS-shaped
-inputs (serialized regexes are legal data); document-size caps;
+Beyond the firewall, and shipped today: total-complexity bounds on
+grammar data (rule count, total alternates, nesting depth, file bytes);
 workspace manifests are trust-gated (they can claim `.json` to shadow a
 trusted language — default-deny for module loads, extension claims
 surfaced); every parse/provider call is wrapped; per-grammar quarantine
 keeps one bad grammar from taking the server down; multisource
-resolution is workspace-sandboxed and off by default. Generated servers
+resolution is workspace-sandboxed and off by default.
+
+**Not yet shipped, and load-bearing for the ReDoS story** (§14 tracks
+both): parse budgets/cancellation and document-size caps. Serialized
+regexes are legal grammar data and pass the `ref` scan by design, so
+until the engine's `parse.budget` hook is wired here, a hostile
+workspace grammar's regex is bounded only by the caps above — which
+bound how much grammar is LOADED, not how long a parse may run.
+Generated servers
 inherit all of this by construction, because they wrap the same core.
 
 ## 11. Protocol decisions
@@ -390,6 +409,22 @@ TS is canonical; Go mirrors by **fixtures, not code sharing**:
   grammars); the fleet-wide diagnostics gate for checkouts with the
   grammars installed.
 
+**Parity is over the pipeline, not the feature set.** The two runtimes
+must agree on what a document *means* — diagnostics, outline, semantic
+tokens, completion — and that is what the fixtures pin. They are not
+the same product around it. The Go runtime is the embedded/generated
+server: its registry is a flat map of one entry per `languageId`, built
+once at startup. It has no workspace manifests, no folder scoping, and
+no hot reload, so the whole class of multi-root concerns — routing a
+document by its folder, keying an instance cache and a quarantine by
+`(entry, folder)`, releasing one folder's quarantine without disturbing
+another's — exists in `ts/` alone and has nothing to mirror in `go/`.
+
+A divergence in the pipeline is an engine or port bug (see
+`parser/DIVERGENCE.md`, TS canonical). A capability present only in
+`ts/` is this deliberate split, and belongs in §7's matrix rather than
+in a fixture.
+
 ## 14. Status and roadmap
 
 Shipped in this repo: the unified server (registry, routing, documents,
@@ -399,7 +434,10 @@ instances, diagnostics, semantic tokens, outline, completion,
 `Continuations`, the generator with Node and Go targets and the editor
 plugin matrix, and the conformance fixtures.
 
-Tracked next, in rough value order: hover token descriptions; worker
+Tracked next, in rough value order: **parse budgets and document-size
+caps** (the §10 gap — the engine's `parse.budget` hook exists and is
+simply not wired here yet, and it is what bounds a hostile grammar's
+serialized regex); hover token descriptions; worker
 isolation + in-flight cancellation; edit-transformation of cached
 spans; browser build (`vscode-languageserver/browser` — the web
 playground already runs the engine client-side); marketplace packaging
