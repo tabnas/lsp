@@ -365,6 +365,41 @@ describe('generate-unified', () => {
     assert.ok(fs.existsSync(precious), 'the prune loop climbed out of the output directory')
   })
 
+  it('supplied engine versions are pinned in the generated go.mod', () => {
+    // Omitting requires keeps the module BUILDABLE (a guessed version
+    // 404s and tidy fails outright), but it is not reproducible: tidy
+    // resolves from whatever the proxy serves when it runs, so the same
+    // output can build against a different engine later and parse
+    // differently. A caller that knows the versions — the release wave
+    // does — can pin them.
+    const out = tmp('gen-gopin-')
+    generate({
+      out,
+      input: { spec: SPEC_FILE },
+      languageId: 'mydsl',
+      runtime: 'go',
+      editors: [],
+      goLspVersion: 'v0.3.1',
+      goParserVersion: 'v0.9.4',
+    })
+    const mod = fs.readFileSync(path.join(out, 'server', 'go.mod'), 'utf8')
+    assert.match(mod, /require github\.com\/tabnas\/lsp\/go v0\.3\.1/)
+    assert.match(mod, /require github\.com\/tabnas\/parser\/go v0\.9\.4/)
+    assert.match(mod, /pinned/)
+
+    // ...and the default still names no version at all.
+    const bare = tmp('gen-gobare-')
+    generate({
+      out: bare,
+      input: { spec: SPEC_FILE },
+      languageId: 'mydsl',
+      runtime: 'go',
+      editors: [],
+    })
+    const bareMod = fs.readFileSync(path.join(bare, 'server', 'go.mod'), 'utf8')
+    assert.equal(/^require /m.test(bareMod), false, bareMod)
+  })
+
   it('a manifest cannot delete through a symlinked directory', () => {
     // Lexical containment is not enough. path.resolve normalises `..`
     // and nothing else, so with `out/link` pointing outside the tree an

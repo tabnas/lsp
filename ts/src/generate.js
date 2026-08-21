@@ -361,18 +361,39 @@ function emitGoServer(lang, opts, files) {
   // `go mod tidy` resolves both from the imports in main.go, which is
   // the only shape that self-heals as the fleet releases. The same rule
   // already governs the plugin module below; it now governs all three.
+  // A version the CALLER supplies is not a guess, so it is pinned. This
+  // is how a generated module becomes reproducible: with nothing pinned,
+  // `go mod tidy` resolves from whatever the proxy serves at the moment
+  // it runs, so the same generator output can build against a different
+  // engine next month and quietly parse differently — which is the
+  // opposite of what design.md §7.1 promises. Omitting the requires is
+  // still the DEFAULT, because the alternative this code shipped with
+  // was a guessed version that 404'd and made every generated server
+  // unbuildable. Pinned when known, floating when not, and the emitted
+  // comment says which of the two happened.
+  const pins = [
+    [opts.goPlugin, opts.goPluginVersion],
+    ['github.com/tabnas/lsp/go', opts.goLspVersion],
+    ['github.com/tabnas/parser/go', opts.goParserVersion],
+  ].filter(([mod, ver]) => mod && ver)
+
   const requires = []
-  if (opts.goPlugin && opts.goPluginVersion) {
-    // An explicitly supplied plugin version is not a guess — pin it.
+  for (const [mod, ver] of pins) {
     // The import path is preserved exactly, /vN suffixes included.
-    requires.push(
-      'require ' + opts.goPlugin + ' ' + opts.goPluginVersion,
-      '',
-    )
+    requires.push('require ' + mod + ' ' + ver)
   }
+  if (0 < pins.length) requires.push('')
+
   requires.push(
-    '// Requirements are resolved by `go mod tidy` from the imports in',
-    '// main.go — run it before the first build (the README says so).',
+    0 < pins.length
+      ? '// The requirements above are pinned; anything else is resolved'
+      : '// Requirements are resolved by `go mod tidy` from the imports in',
+    0 < pins.length
+      ? '// by `go mod tidy` from the imports in main.go — run it before'
+      : '// main.go — run it before the first build (the README says so).',
+    0 < pins.length
+      ? '// the first build (the README says so).'
+      : '// Pass --go-lsp-version/--go-parser-version to pin them instead.',
     '// For unreleased local checkouts, add replace directives (or pass',
     '// --go-replace to the generator):',
   )

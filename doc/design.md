@@ -226,6 +226,17 @@ Three audiences the unified server cannot serve:
   the unified server tracks its registry. CI and reproducible-tooling
   contexts want the former.
 
+  This one is only as strong as what the caller supplies, and the
+  README should not be read as promising more. The Node lane resolves
+  real versions and emits them. The Go lane cannot: the generator has
+  no network, and the version it used to guess was unpublished, so
+  `go mod tidy` failed and every generated server was unbuildable.
+  The default is therefore an UNPINNED `go.mod` whose requirements
+  `go mod tidy` resolves from `main.go`'s imports — buildable always,
+  reproducible only until the proxy moves. Pass `--go-lsp-version` and
+  `--go-parser-version` (as the release wave can) to pin them, and the
+  emitted comment states which of the two happened.
+
 ### 7.2 Inputs and runtime matrix
 
 The generator accepts one grammar, in any of four forms, and emits a

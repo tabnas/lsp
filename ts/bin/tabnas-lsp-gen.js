@@ -33,6 +33,8 @@ go runtime:
                               non-identifier characters removed)
   --go-plugin-version <vX.Y.Z> pin the plugin require (otherwise
                               \`go mod tidy\` resolves it from the import)
+  --go-lsp-version <vX.Y.Z>   pin the github.com/tabnas/lsp/go require
+  --go-parser-version <vX.Y.Z> pin the github.com/tabnas/parser/go require
   --go-replace <mod=dir>      replace directive for local dev (repeatable)
 `
 
@@ -66,6 +68,8 @@ function parseArgs(argv) {
       case '--go-plugin': opts.goPlugin = next(); break
       case '--go-plugin-func': opts.goPluginFunc = next(); break
       case '--go-plugin-version': opts.goPluginVersion = next(); break
+      case '--go-lsp-version': opts.goLspVersion = next(); break
+      case '--go-parser-version': opts.goParserVersion = next(); break
       case '--go-replace': opts.goReplace.push(next()); break
       case '--help': case '-h':
         console.log(USAGE)
