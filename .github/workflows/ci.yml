@@ -1,0 +1,78 @@
+# Target: tabnas/lsp -> .github/workflows/ci.yml
+#
+# Standalone rather than a polyglot-ci.yml caller, for two reasons the
+# reusable workflow cannot accommodate: @tabnas/lsp is flat (package.json
+# at the repo root, not under ts/), and it has no go/ tree and no build
+# step — it ships plain CommonJS.
+#
+# It does need the engine, so the parser is cloned as a sibling and built,
+# matching the `file:../parser/ts` devDependency the promoted layout uses
+# (bootstrap step 3 in the staging README). That path is what makes CI
+# test against the engine at main rather than a published release — which
+# is the point, since this repo tracks unreleased engine contract work.
+#
+# Action refs use version tags for readability; Renovate
+# (helpers:pinGitHubActionDigests) pins them to commit SHAs automatically.
+
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Use LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          path: lsp
+
+      - name: Use Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: "24.x"
+
+      - name: Clone the engine
+        shell: bash
+        run: git clone --depth 1 https://github.com/tabnas/parser.git parser
+
+      - name: Build the engine
+        shell: bash
+        working-directory: parser/ts
+        run: npm i && npm run build
+
+      - name: Install
+        shell: bash
+        working-directory: lsp
+        run: npm i
+
+      - name: Test
+        shell: bash
+        working-directory: lsp
+        run: npm test
+
+      # The registry is generated from fleet descriptors, so a stale
+      # data/registry.json means the checked-in routing table no longer
+      # matches the descriptors it claims to derive from (ADR-10:
+      # derive, never duplicate). Regenerating needs the sibling repos,
+      # which CI does not clone, so this only asserts the file parses
+      # and is non-empty — the drift gate belongs with the fleet
+      # checkout the release job already has.
+      - name: Registry sanity
+        shell: bash
+        working-directory: lsp
+        run: >-
+          node -e "const r=require('./data/registry.json');
+          if(!Array.isArray(r.entries)||0===r.entries.length)
+          {throw new Error('registry.json has no entries')}
+          if(r.count!==r.entries.length)
+          {throw new Error('registry.json count disagrees with entries')}
+          console.log('registry ok: '+r.count+' entries')"
