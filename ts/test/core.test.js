@@ -90,6 +90,73 @@ describe('lsp-core', () => {
     assert.ok(sawNewline, 'delta encoding crossed the newline')
   })
 
+  it('multiline tokens split into line-local spans', () => {
+    // A block comment spanning lines must not emit one token whose
+    // length crosses the line break: multiline semantic tokens are an
+    // optional client capability, and unsplit ones mis-highlight.
+    //
+    // Built on the shared pure-data grammar (comments ON — the strict
+    // JSON plugin fixture disallows them), the same grammar the Go
+    // mirror of this test uses.
+    const fs = require('fs')
+    const spec = JSON.parse(fs.readFileSync(
+      path.join(__dirname, '..', '..', 'test', 'fixtures', 'json-grammar.json'),
+      'utf8'))
+    const entry = normalize({ name: 'specf', languageId: 'specf', grammarKind: 'data' })
+    const instances = new SerialInstances(() => {
+      const tn = new Tabnas({ parse: { recover: { enabled: true } } })
+      tn.grammar(spec)
+      entry._inst = tn
+      return tn
+    })
+    const inst = instances.get(entry)
+    const doc = new Doc('file:///t.specf', 'specf', 1, '{"a":1,/*x\ny*/"b":2}')
+    const a = core.analyze(instances, inst, entry, doc)
+    const lines = doc.text.split('\n')
+    let line = 0
+    let char = 0
+    let sawContinuation = false
+    const data = a.semanticTokens.data
+    for (let i = 0; i < data.length; i += 5) {
+      if (0 < data[i]) {
+        line += data[i]
+        char = data[i + 1]
+      } else {
+        char += data[i + 1]
+      }
+      const len = data[i + 2]
+      assert.ok(char + len <= lines[line].length,
+        'token crosses its line: line ' + line + ' char ' + char + ' len ' + len)
+      if (1 === line && 0 === char) sawContinuation = true
+    }
+    assert.ok(sawContinuation, 'no continuation span on the second line')
+  })
+
+  it('the exported Instances class delivers collector events', () => {
+    // The one instance-management class routes the permanent mux
+    // through the active collector; a dead variant whose mux never
+    // fired once shipped here (review catch on #1) — analyze() with it
+    // returned empty tokens and outline while parsing succeeded.
+    const { Instances } = require('../src/instances')
+    const entry = normalize({
+      name: '@tabnas/json-fixture', languageId: 'jsonf2',
+      grammarKind: 'data', lexStream: 'clean',
+    })
+    const instances = new Instances(() => {
+      const tn = new Tabnas({
+        plugins: [json],
+        parse: { recover: { enabled: true } },
+      })
+      entry._inst = tn
+      return tn
+    })
+    const inst = instances.get(entry)
+    const doc = new Doc('file:///t.jsonf', 'jsonf2', 1, '{"a":[1,2]}')
+    const a = core.analyze(instances, inst, entry, doc)
+    assert.ok(0 < a.semanticTokens.data.length, 'no lex events reached the collector')
+    assert.equal(a.outline.length, 1, 'no ruleDone events reached the collector')
+  })
+
   it('completion offers the colon after a key', () => {
     const { inst } = makeStack()
     const doc = new Doc('file:///t.jsonf', 'jsonf', 1, '{"a"')

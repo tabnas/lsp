@@ -18,9 +18,17 @@
 const fs = require('fs')
 const path = require('path')
 
-// Cap ported from mcp: bounds grammar LOAD cost. Parse cost is bounded
-// separately by parse budgets (design §10).
+// Caps bounding grammar LOAD cost (parse cost is bounded separately by
+// parse budgets, design §10). MAX_GRAMMAR_RULES is ported from mcp;
+// the others exist because a rule-count cap alone lets one rule carry
+// an arbitrarily large alts array, an arbitrarily deep options tree
+// (deep enough to overflow the recursive scans), or an arbitrarily
+// large file — L2/L3 grammar data is untrusted, so total complexity is
+// bounded, not just the rule-name count.
 const MAX_GRAMMAR_RULES = 5000
+const MAX_GRAMMAR_ALTS = 10000
+const MAX_GRAMMAR_DEPTH = 100
+const MAX_GRAMMAR_BYTES = 1000000
 
 // The three BNF dialects, by grammar-file extension. Separate packages
 // and separate dialects — ABNF's compiler rejects the other two, so
@@ -55,10 +63,20 @@ const FORBIDDEN_KEYS = ['__proto__', 'constructor', 'prototype']
 // references (grammar.schema.json $defs.alt). `a` may be an array.
 const ALT_FUNC_KEYS = ['b', 'p', 'r', 'a', 'e', 'h', 'c']
 
-function scanForbiddenKeys(val, p, out) {
+function scanForbiddenKeys(val, p, out, depth) {
+  depth = depth || 0
   if (null === val || 'object' !== typeof val) return
+  if (MAX_GRAMMAR_DEPTH < depth) {
+    out.push({
+      path: p,
+      message: 'grammar nesting deeper than ' + MAX_GRAMMAR_DEPTH +
+        ' levels: refused (no real GrammarSpec is this deep, and the ' +
+        'scans must not be recursed off the stack)',
+    })
+    return
+  }
   if (Array.isArray(val)) {
-    val.forEach((v, i) => scanForbiddenKeys(v, p + '[' + i + ']', out))
+    val.forEach((v, i) => scanForbiddenKeys(v, p + '[' + i + ']', out, depth + 1))
     return
   }
   // getOwnPropertyNames, not Object.keys: JSON.parse creates __proto__
@@ -75,7 +93,9 @@ function scanForbiddenKeys(val, p, out) {
       continue
     }
     const desc = Object.getOwnPropertyDescriptor(val, key)
-    if (desc && 'value' in desc) scanForbiddenKeys(desc.value, childPath, out)
+    if (desc && 'value' in desc) {
+      scanForbiddenKeys(desc.value, childPath, out, depth + 1)
+    }
   }
 }
 
@@ -94,7 +114,9 @@ function makeRefScanner(builtinRefs) {
   // and '@/re/flags' / '@~/re/flags' (serialized RegExps) are data;
   // $-suffixed builtins pass; any other ref-shaped '@name' would be
   // resolved from a ref bag this lane refuses to accept.
-  function scanOptionsRefs(val, p, out) {
+  function scanOptionsRefs(val, p, out, depth) {
+    depth = depth || 0
+    if (MAX_GRAMMAR_DEPTH < depth || 100 < out.length) return
     if ('string' === typeof val) {
       if ('@' !== val[0] || val.startsWith('@@') || '@SKIP' === val ||
         /^@~?\/.*\/[\w]*$/.test(val) || isBuiltin(val)) return
@@ -102,12 +124,12 @@ function makeRefScanner(builtinRefs) {
       return
     }
     if (Array.isArray(val)) {
-      val.forEach((v, i) => scanOptionsRefs(v, p + '[' + i + ']', out))
+      val.forEach((v, i) => scanOptionsRefs(v, p + '[' + i + ']', out, depth + 1))
       return
     }
     if (null !== val && 'object' === typeof val) {
       for (const k of Object.keys(val)) {
-        scanOptionsRefs(val[k], p + '.' + k, out)
+        scanOptionsRefs(val[k], p + '.' + k, out, depth + 1)
       }
     }
   }
@@ -189,13 +211,27 @@ function firewallSpec(gs, parserMod) {
           ' rules, more than ' + MAX_GRAMMAR_RULES,
       })
     }
+    // Total alternates are capped as well: one rule can carry an
+    // arbitrarily large alts array, and the rule-count cap alone would
+    // wave it through.
+    let altCount = 0
     for (const rulename of ruleNames) {
       const rulespec = gs.rule[rulename]
       if (null == rulespec || 'object' !== typeof rulespec) continue
       for (const state of ['open', 'close']) {
-        altsOf(rulespec[state]).forEach((alt, i) =>
+        const alts = altsOf(rulespec[state])
+        altCount += alts.length
+        alts.forEach((alt, i) =>
           scanAltRefs(alt, '$.rule.' + rulename + '.' + state + '[' + i + ']', out))
       }
+      if (altCount > MAX_GRAMMAR_ALTS) break
+    }
+    if (altCount > MAX_GRAMMAR_ALTS) {
+      out.push({
+        path: '$.rule',
+        message: 'grammar defines more than ' + MAX_GRAMMAR_ALTS +
+          ' alternates in total',
+      })
     }
   }
   return out
@@ -204,19 +240,40 @@ function firewallSpec(gs, parserMod) {
 // ---------------------------------------------------------------------
 // Path resolution, workspace-sandboxed. A workspace manifest names
 // files relative to its own folder and may not reach outside it —
-// document-controlled paths are attack surface (design §10).
+// document-controlled paths are attack surface (design §10). The check
+// runs on REAL paths: a lexical prefix test alone accepts `grammar
+// .json` that is a symlink out of the workspace, and the read then
+// follows the link (review catch on #1).
 
 function resolveSandboxed(file, baseDir) {
   if (null == baseDir) {
     throw new LoadError('grammar file paths need a base directory: ' + file)
   }
-  const abs = path.resolve(baseDir, file)
-  const base = path.resolve(baseDir)
+  let base
+  try {
+    base = fs.realpathSync(path.resolve(baseDir))
+  } catch (e) {
+    throw new LoadError('workspace folder not readable: ' + baseDir + ': ' + e.message)
+  }
+  const abs = path.resolve(base, file)
+  // Lexical gate first, so a plainly escaping RELATIVE path is refused
+  // with the clear message even when its target does not exist.
   if (abs !== base && !abs.startsWith(base + path.sep)) {
     throw new LoadError(
       'grammar file escapes its workspace folder: ' + file + ' (from ' + base + ')')
   }
-  return abs
+  let real
+  try {
+    real = fs.realpathSync(abs)
+  } catch (e) {
+    throw new LoadError('grammar file not readable: ' + file + ': ' + e.message)
+  }
+  if (real !== base && !real.startsWith(base + path.sep)) {
+    throw new LoadError(
+      'grammar file escapes its workspace folder (via symlink): ' +
+        file + ' -> ' + real)
+  }
+  return real
 }
 
 // ---------------------------------------------------------------------
@@ -234,6 +291,13 @@ function pluginCandidates(req, name) {
   try {
     mod = req(name)
   } catch (e) {
+    // The @tabnas/<name> fallback is for SHORT names only. A module
+    // that exists but throws while initializing must surface its own
+    // error — falling back would either hide it behind a not-found for
+    // a name nobody asked for, or silently serve a different package.
+    const notFound = 'MODULE_NOT_FOUND' === e.code &&
+      String(e.message).includes("'" + name + "'")
+    if (!notFound || name.startsWith('@')) throw e
     mod = req('@tabnas/' + name)
   }
   const short = String(name).replace(/^@tabnas\//, '')
@@ -349,13 +413,19 @@ function makeLoader(requireFn, opts) {
     const trust = (opts && opts.trust) || {}
     const parserMod = req('@tabnas/parser')
     const { Tabnas } = parserMod
-    const tnOpts = Object.assign(
-      { parse: { recover: { enabled: true } } },
-      entry.options,
-    )
-    if (entry.syncGroups) {
-      tnOpts.parse = tnOpts.parse || {}
-      tnOpts.parse.recover = tnOpts.parse.recover || { enabled: true }
+    // Nested merge, not a shallow spread: an entry that configures any
+    // options.parse setting must not silently lose recover.enabled —
+    // multi-error diagnostics are the pipeline's foundation. Explicit
+    // entry recover settings still win over these defaults.
+    const entryOpts = entry.options || {}
+    const entryParse = entryOpts.parse || {}
+    const entryRecover = entryParse.recover || {}
+    const tnOpts = Object.assign({}, entryOpts, {
+      parse: Object.assign({}, entryParse, {
+        recover: Object.assign({ enabled: true }, entryRecover),
+      }),
+    })
+    if (entry.syncGroups && undefined === entryRecover.syncGroups) {
       tnOpts.parse.recover.syncGroups = entry.syncGroups
     }
 
@@ -366,7 +436,7 @@ function makeLoader(requireFn, opts) {
       let gs = load.spec
       if ('string' === typeof gs) {
         const file = resolveSandboxed(gs, entry._dir)
-        gs = JSON.parse(fs.readFileSync(file, 'utf8'))
+        gs = JSON.parse(readCapped(file, entry))
       }
       return installSpec(gs, entry, tnOpts)
     }
@@ -374,7 +444,7 @@ function makeLoader(requireFn, opts) {
     // --- L3: BNF-dialect grammar text ---
     if (null != load.grammar) {
       const file = resolveSandboxed(load.grammar, entry._dir)
-      const src = fs.readFileSync(file, 'utf8')
+      const src = readCapped(file, entry)
       const gs = compileGrammarText(req, file, src)
       return installSpec(gs, entry, tnOpts)
     }
@@ -418,6 +488,19 @@ function makeLoader(requireFn, opts) {
   }
 }
 
+// Read a grammar file with the byte cap applied: the untrusted-data
+// bound has to hold before JSON.parse or a dialect compile sees the
+// content, not after.
+function readCapped(file, entry) {
+  const stat = fs.statSync(file)
+  if (stat.size > MAX_GRAMMAR_BYTES) {
+    throw new LoadError(
+      'grammar file for ' + entry.languageId + ' is ' + stat.size +
+        ' bytes, larger than ' + MAX_GRAMMAR_BYTES)
+  }
+  return fs.readFileSync(file, 'utf8')
+}
+
 module.exports = {
   makeLoader,
   firewallSpec,
@@ -425,5 +508,8 @@ module.exports = {
   resolveSandboxed,
   LoadError,
   MAX_GRAMMAR_RULES,
+  MAX_GRAMMAR_ALTS,
+  MAX_GRAMMAR_DEPTH,
+  MAX_GRAMMAR_BYTES,
   DIALECTS,
 }

@@ -107,6 +107,14 @@ describe('generate-node', () => {
     assert.ok(serverJs.includes("startServer({ entries: [entry] })"))
     assert.ok(!serverJs.includes('analyze'), 'no pipeline logic in the wrapper')
 
+    // Dependencies are pinned to the exact resolvable versions — a
+    // generated server freezes behavior, and a range lets npm move it.
+    const pkg = JSON.parse(fs.readFileSync(path.join(out, 'server', 'package.json'), 'utf8'))
+    assert.equal(pkg.dependencies['@tabnas/lsp'],
+      require('../package.json').version)
+    assert.equal(pkg.dependencies['@tabnas/parser'],
+      require(path.join(PARSER, 'ts', 'package.json')).version)
+
     // Make the generated package's deps resolvable, then RUN it: a
     // scripted client opens a broken document and must get pushed
     // diagnostics from the embedded grammar.
@@ -238,6 +246,48 @@ describe('generate-go', () => {
     const mainGo = fs.readFileSync(path.join(out, 'server', 'main.go'), 'utf8')
     assert.ok(mainGo.includes('//go:embed grammar.json'))
   })
+
+  it('plugin-linked entries: sane identifiers, metadata, honest go.mod', () => {
+    const regDir = tmp('gen-goreg-')
+    const REG = path.join(regDir, 'registry.json')
+    fs.writeFileSync(REG, JSON.stringify({
+      entries: [{
+        name: '@tabnas/foo-lang', languageId: 'foo-lang',
+        extensions: ['.fl'], grammarKind: 'closure',
+        syncGroups: ['end', 'comma'],
+        semanticTokens: { '#KEY': 'property' },
+      }],
+    }))
+    const gen = (extra) => {
+      const out = tmp('gen-goent-')
+      generate(Object.assign({
+        out, input: { entry: 'foo-lang' }, runtime: 'go', editors: [],
+        registryFile: REG,
+        goPlugin: 'github.com/tabnas/foolang/go/v2',
+      }, extra))
+      return {
+        mainGo: fs.readFileSync(path.join(out, 'server', 'main.go'), 'utf8'),
+        goMod: fs.readFileSync(path.join(out, 'server', 'go.mod'), 'utf8'),
+      }
+    }
+
+    const { mainGo, goMod } = gen({})
+    // 'foo-lang' must not become the invalid identifier 'Foo-lang'.
+    assert.ok(mainGo.includes('plugin.FooLang'), mainGo)
+    // Registry recovery/highlighting metadata reaches the Go entry —
+    // dropping SyncGroups changes where the generated server recovers.
+    assert.ok(mainGo.includes('SyncGroups: []string{"end", "comma"}'), mainGo)
+    assert.ok(mainGo.includes('SemanticTokens: map[string]string{"#KEY": "property"}'))
+    // The /v2 semantic-import suffix survives in the import path, and
+    // no fabricated v0.0.0 require appears — go mod tidy resolves the
+    // plugin from the import (or a replace) unless a version is given.
+    assert.ok(mainGo.includes('"github.com/tabnas/foolang/go/v2"'))
+    assert.ok(!goMod.includes('v0.0.0'), goMod)
+    assert.ok(!goMod.includes('github.com/tabnas/foolang'), goMod)
+
+    const pinned = gen({ goPluginVersion: 'v2.1.0' })
+    assert.ok(pinned.goMod.includes('github.com/tabnas/foolang/go/v2 v2.1.0'))
+  })
 })
 
 describe('generate-unified', () => {
@@ -282,7 +332,45 @@ describe('generate-unified', () => {
     const pkg = JSON.parse(fs.readFileSync(
       path.join(out, 'editors', 'vscode', 'package.json'), 'utf8'))
     assert.deepStrictEqual(pkg.contributes.languages[0].extensions, ['.mydsl', '.md5l'])
-    assert.equal(pkg.contributes.configuration.properties['tabnas.serverPath'].default,
+    // Per-extension setting key: two installed branded extensions must
+    // not fight over one shared tabnas.serverPath.
+    assert.equal(
+      pkg.contributes.configuration.properties['tabnas.mydsl.serverPath'].default,
       'mydsl-lsp')
+    const ext = fs.readFileSync(path.join(out, 'editors', 'vscode', 'extension.js'), 'utf8')
+    assert.ok(ext.includes("'mydsl.serverPath'") || ext.includes('"mydsl.serverPath"'), ext)
+  })
+
+  it('regeneration deletes files the previous run owned', () => {
+    // Overwrite-only regeneration leaves a removed language's files in
+    // place — stale artifacts that still ship, and a staleness gate
+    // that can never pass. The manifest is what makes deletion safe:
+    // only files a previous run listed are ever removed.
+    const regDir = tmp('gen-reg2-')
+    const REG_AB = path.join(regDir, 'ab.json')
+    const REG_A = path.join(regDir, 'a.json')
+    fs.writeFileSync(REG_AB, JSON.stringify({
+      entries: [
+        { name: '@tabnas/jsonic', languageId: 'jsonic', extensions: ['.jsonic'] },
+        { name: '@tabnas/zon', languageId: 'zon', extensions: ['.zon'] },
+      ],
+    }))
+    fs.writeFileSync(REG_A, JSON.stringify({
+      entries: [
+        { name: '@tabnas/jsonic', languageId: 'jsonic', extensions: ['.jsonic'] },
+      ],
+    }))
+    const out = tmp('gen-clean-')
+    generate({ out, unified: true, registryFile: REG_AB, editors: ['zed', 'helix'] })
+    assert.ok(fs.existsSync(path.join(out, 'zed', 'languages', 'zon', 'config.toml')))
+
+    generate({ out, unified: true, registryFile: REG_A, editors: ['zed', 'helix'] })
+    assert.ok(!fs.existsSync(path.join(out, 'zed', 'languages', 'zon')),
+      'stale zon language dir survived regeneration')
+    const manifest = JSON.parse(fs.readFileSync(
+      path.join(out, '.tabnas-lsp-gen.json'), 'utf8'))
+    assert.ok(!manifest.files.some((f) => f.includes('zon')))
+    const helix = fs.readFileSync(path.join(out, 'helix', 'languages.toml'), 'utf8')
+    assert.ok(!helix.includes('zon'))
   })
 })

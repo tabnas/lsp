@@ -27,10 +27,13 @@ options:
                            registry over tabnas-lsp itself (no server)
 
 go runtime:
-  --go-module <path>       generated module path
-  --go-plugin <import>     Go plugin package (closure/imperative grammars)
-  --go-plugin-func <Name>  plugin function (default: CamelCased id)
-  --go-replace <mod=dir>   replace directive for local dev (repeatable)
+  --go-module <path>          generated module path
+  --go-plugin <import>        Go plugin package (closure/imperative grammars)
+  --go-plugin-func <Name>     plugin function (default: id CamelCased with
+                              non-identifier characters removed)
+  --go-plugin-version <vX.Y.Z> pin the plugin require (otherwise
+                              \`go mod tidy\` resolves it from the import)
+  --go-replace <mod=dir>      replace directive for local dev (repeatable)
 `
 
 function parseArgs(argv) {
@@ -62,6 +65,7 @@ function parseArgs(argv) {
       case '--go-module': opts.goModule = next(); break
       case '--go-plugin': opts.goPlugin = next(); break
       case '--go-plugin-func': opts.goPluginFunc = next(); break
+      case '--go-plugin-version': opts.goPluginVersion = next(); break
       case '--go-replace': opts.goReplace.push(next()); break
       case '--help': case '-h':
         console.log(USAGE)

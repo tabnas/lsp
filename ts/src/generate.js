@@ -30,11 +30,50 @@ const { firewallSpec, compileGrammarText, LoadError, DIALECTS } = require('./loa
 
 const ALL_EDITORS = ['vscode', 'nvim', 'emacs', 'sublime', 'helix', 'kate', 'zed']
 
+// Manifest of generator-owned files, written into every output: it is
+// what lets a REgeneration delete files the previous run produced that
+// this run did not (a removed language's Zed dir, a dropped editor) —
+// overwrite-only regeneration leaves stale artifacts that still ship.
+const MANIFEST = '.tabnas-lsp-gen.json'
+
 class GenerateError extends Error {
   constructor(message) {
     super(message)
     this.name = 'GenerateError'
   }
+}
+
+// An exported Go identifier from a language id: ids commonly contain
+// hyphens ('foo-lang'), which a naive capitalize turns into invalid
+// source ('Foo-lang').
+function goIdent(id) {
+  const ident = String(id).split(/[^A-Za-z0-9]+/)
+    .filter((s) => 0 < s.length)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('')
+  return /^[A-Za-z]/.test(ident) ? ident : null
+}
+
+// The exact installed version of a dependency, so generated servers
+// freeze what they were generated against; `fallback` when the package
+// is not resolvable at generation time. Two probes: the package.json
+// subpath (blocked by an `exports` map that does not list it — the
+// engine's does not), then the fleet's exported VERSION const, which
+// every tabnas package carries and version-tests against package.json.
+function depVersion(req, name, fallback) {
+  try {
+    const pkg = req(name + '/package.json')
+    if (pkg && 'string' === typeof pkg.version) return pkg.version
+  } catch (e) {
+    // exports-mapped or not installed — try the VERSION const
+  }
+  try {
+    const mod = req(name)
+    if (mod && 'string' === typeof mod.VERSION) return mod.VERSION
+  } catch (e) {
+    // not installed here — the fallback range documents the intent
+  }
+  return fallback
 }
 
 // generate(opts) -> { files: [relpath...], out }
@@ -82,9 +121,13 @@ function generate(opts) {
     generateUnified(opts, editors, files)
   } else {
     const lang = resolveInput(opts)
-    if ('node' === runtime) emitNodeServer(lang, files)
+    if ('node' === runtime) emitNodeServer(lang, files, opts.requireFn || require)
     else emitGoServer(lang, opts, files)
-    const bin = 'node' === runtime ? lang.id + '-lsp' : './' + lang.id + '-lsp'
+    // Editors launch servers from their own working directory, so the
+    // command is the PATH name for both runtimes — the README says how
+    // to put the built binary there; vscode's serverPath setting takes
+    // an absolute path override.
+    const bin = lang.id + '-lsp'
     emitEditors(editors, [lang], bin, files, 'editors/')
     files.set('README.md', readmeSingle(lang, runtime, editors))
   }
@@ -181,10 +224,14 @@ function needExtensions(opts, id) {
 // ---------------------------------------------------------------------
 // Node server package.
 
-function emitNodeServer(lang, files) {
+function emitNodeServer(lang, files, req) {
+  // Exact versions where resolvable: a generated server freezes
+  // grammar + engine behavior (design §7.1), and a range lets a later
+  // npm install move it without regeneration.
   const deps = {
-    '@tabnas/lsp': '^0.1.0',
-    '@tabnas/parser': '>=0.9.0',
+    '@tabnas/lsp': depVersion(req, '@tabnas/lsp',
+      require('../package.json').version),
+    '@tabnas/parser': depVersion(req, '@tabnas/parser', '>=0.9.0'),
   }
   const entry = {
     name: lang.id,
@@ -212,14 +259,14 @@ function emitNodeServer(lang, files) {
       options: lang.entry.options,
       stack: lang.entry.stack,
     })
-    deps[lang.entry.name] = '*'
+    deps[lang.entry.name] = depVersion(req, lang.entry.name, '*')
     if (lang.entry.base && 'grammar' === lang.entry.pluginKind) {
-      deps[lang.entry.base] = '*'
+      deps[lang.entry.base] = depVersion(req, lang.entry.base, '*')
     }
   } else if ('module' === lang.kind) {
     entry.name = lang.module
     entry.load = { module: lang.module }
-    deps[lang.module] = '*'
+    deps[lang.module] = depVersion(req, lang.module, '*')
   } else if ('spec' === lang.kind) {
     entry.grammarKind = 'data'
     entry.load = { spec: 'grammar.json' }
@@ -227,7 +274,7 @@ function emitNodeServer(lang, files) {
   } else if ('grammar' === lang.kind) {
     entry.grammarKind = 'compiled'
     entry.load = { grammar: path.basename(lang.grammarFile) }
-    deps[lang.dialectPkg] = '*'
+    deps[lang.dialectPkg] = depVersion(req, lang.dialectPkg, '*')
     dataFile = ['server/' + path.basename(lang.grammarFile), lang.grammarText]
   }
 
@@ -264,6 +311,32 @@ function emitNodeServer(lang, files) {
 // ---------------------------------------------------------------------
 // Go server module.
 
+// Registry metadata that must survive into the generated Go Entry:
+// dropping SyncGroups changes where recovery resynchronizes, dropping
+// the semantic-token map or outline rules changes what the editor
+// shows — the generated server would quietly disagree with the
+// canonical TS server about the same grammar.
+function goEntryMeta(entry) {
+  const goStringMap = (m) => 'map[string]string{' +
+    Object.keys(m).sort().map((k) =>
+      JSON.stringify(k) + ': ' + JSON.stringify(m[k])).join(', ') + '}'
+  const meta = []
+  if (entry.syncGroups && 0 < entry.syncGroups.length) {
+    meta.push(['SyncGroups', '[]string{' +
+      entry.syncGroups.map((s) => JSON.stringify(s)).join(', ') + '}'])
+  }
+  if (entry.lexStream && 'clean' !== entry.lexStream) {
+    meta.push(['LexStream', JSON.stringify(entry.lexStream)])
+  }
+  if (entry.semanticTokens && 0 < Object.keys(entry.semanticTokens).length) {
+    meta.push(['SemanticTokens', goStringMap(entry.semanticTokens)])
+  }
+  if (entry.outlineRules && 0 < Object.keys(entry.outlineRules).length) {
+    meta.push(['OutlineRules', goStringMap(entry.outlineRules)])
+  }
+  return meta
+}
+
 function emitGoServer(lang, opts, files) {
   if ('module' === lang.kind) {
     throw new GenerateError(
@@ -277,12 +350,23 @@ function emitGoServer(lang, opts, files) {
     'require (',
     '\tgithub.com/tabnas/lsp/go v0.1.0',
     '\tgithub.com/tabnas/parser/go v0.9.0',
+  ]
+  // The plugin module's require is emitted only with a real version
+  // (--go-plugin-version): a fabricated v0.0.0 does not exist and
+  // fails the documented `go mod tidy`, which otherwise resolves and
+  // adds the requirement itself from the import (or from a replace).
+  // The import path is preserved exactly — semantic-import /vN
+  // suffixes included.
+  if (opts.goPlugin && opts.goPluginVersion) {
+    requires.push('\t' + opts.goPlugin + ' ' + opts.goPluginVersion)
+  }
+  requires.push(
     ')',
     '',
     '// Version floors above are minimums — `go mod tidy` resolves real',
     '// versions. For unreleased local checkouts use replace directives',
     '// (or pass --go-replace to the generator):',
-  ]
+  )
   for (const r of opts.goReplace || []) {
     const [mod, dir] = String(r).split('=')
     requires.push('replace ' + mod + ' => ' + dir)
@@ -299,6 +383,8 @@ function emitGoServer(lang, opts, files) {
     ...requires,
     '',
   ].join('\n'))
+
+  const metaLines = lang.entry ? goEntryMeta(lang.entry) : []
 
   let spec = null
   if ('spec' === lang.kind) {
@@ -355,6 +441,7 @@ function emitGoServer(lang, opts, files) {
       '\t\t[]string{' + lang.extensions.map((e) => JSON.stringify(e)).join(', ') + '},',
       '\t\tgrammarJSON,',
       '\t)',
+      ...metaLines.map(([f, v]) => '\tentry.' + f + ' = ' + v),
       '\tif err := lsp.Serve(lsp.Config{',
       '\t\tEntries:      []*lsp.Entry{entry},',
       '\t\tMakeInstance: makeInstance,',
@@ -365,8 +452,12 @@ function emitGoServer(lang, opts, files) {
       '',
     ].join('\n'))
   } else {
-    const fn = opts.goPluginFunc ||
-      lang.id.charAt(0).toUpperCase() + lang.id.slice(1)
+    const fn = opts.goPluginFunc || goIdent(lang.id)
+    if (null == fn) {
+      throw new GenerateError(
+        "cannot derive a Go plugin function name from '" + lang.id +
+          "' — pass --go-plugin-func")
+    }
     files.set('server/main.go', [
       '// Generated by tabnas-lsp-gen. The pipeline lives in',
       '// github.com/tabnas/lsp/go; this wrapper only pins what is served.',
@@ -386,6 +477,7 @@ function emitGoServer(lang, opts, files) {
       '\t\tLanguageID: ' + JSON.stringify(lang.id) + ',',
       '\t\tExtensions: []string{' + lang.extensions.map((e) => JSON.stringify(e)).join(', ') + '},',
       '\t\tEnabled:    true,',
+      ...metaLines.map(([f, v]) => '\t\t' + f + ': ' + v + ','),
       '\t}',
       '\tmakeInstance := func(e *lsp.Entry) (*tabnas.Tabnas, error) {',
       '\t\ttn := lsp.NewInstance(e)',
@@ -403,10 +495,6 @@ function emitGoServer(lang, opts, files) {
       '}',
       '',
     ].join('\n'))
-    files.set('server/go.mod',
-      files.get('server/go.mod').replace(
-        'require (',
-        'require (\n\t' + opts.goPlugin.replace(/\/v\d+$/, '') + ' v0.0.0'))
   }
 }
 
@@ -445,6 +533,10 @@ const EDITOR_EMITTERS = {
   vscode(langs, bin, files) {
     const single = 1 === langs.length
     const name = single ? langs[0].id + '-lsp-vscode' : 'tabnas-lsp-vscode'
+    // Per-extension setting key: two installed branded extensions must
+    // not share (and fight over) one `tabnas.serverPath`; the unified
+    // extension keeps the plain key.
+    const settingKey = single ? 'tabnas.' + langs[0].id + '.serverPath' : 'tabnas.serverPath'
     files.set('vscode/package.json', JSON.stringify({
       name,
       displayName: single ? langs[0].id + ' (tabnas)' : 'tabnas languages',
@@ -469,7 +561,7 @@ const EDITOR_EMITTERS = {
         configuration: {
           title: single ? langs[0].id : 'tabnas',
           properties: {
-            ['tabnas.serverPath']: {
+            [settingKey]: {
               type: 'string',
               default: bin,
               description: 'Command that starts the language server (--stdio is appended).',
@@ -490,7 +582,7 @@ const EDITOR_EMITTERS = {
       '',
       'function activate() {',
       "  const command = vscode.workspace.getConfiguration('tabnas')",
-      "    .get('serverPath') || " + JSON.stringify(bin),
+      '    .get(' + JSON.stringify(settingKey.replace(/^tabnas\./, '')) + ') || ' + JSON.stringify(bin),
       '  client = new LanguageClient(',
       '    ' + JSON.stringify(single ? langs[0].id : 'tabnas') + ',',
       '    ' + JSON.stringify((single ? langs[0].id : 'tabnas') + ' language server') + ',',
@@ -682,9 +774,19 @@ function editorList(editors, prefix) {
 
 function readmeSingle(lang, runtime, editors) {
   const build = 'node' === runtime
-    ? ['```', 'cd server && npm install', 'npx ' + lang.id + '-lsp --stdio', '```']
-    : ['```', 'cd server && go mod tidy && go build -o ' + lang.id + '-lsp .',
-      './' + lang.id + '-lsp', '```']
+    ? ['```', 'cd server && npm install', 'npx ' + lang.id + '-lsp --stdio', '```',
+      '',
+      'Installing the package (`npm install -g ./server`, or publishing',
+      'it) puts the `' + lang.id + '-lsp` command on PATH, which is what',
+      'the generated editor configurations launch.']
+    : ['```', 'cd server && go mod tidy && go build -o ' + lang.id + '-lsp .', '```',
+      '',
+      'Put the built binary on PATH (`go install .` with GOBIN on PATH,',
+      'or copy it into a PATH directory): the generated editor',
+      'configurations launch `' + lang.id + '-lsp` by name — editors do',
+      'not run servers from the build directory. The VS Code setting',
+      '`tabnas.' + lang.id + '.serverPath` accepts an absolute path',
+      'instead.']
   return [
     '# ' + lang.id + ' language server',
     '',
@@ -736,6 +838,44 @@ function readmeUnified(langs, editors) {
 // ---------------------------------------------------------------------
 
 function writeFiles(out, files) {
+  // The manifest lists this run's files (itself excluded, sorted, no
+  // timestamps — regeneration must be byte-stable for the staleness
+  // gates). It is read back on the NEXT run to delete generator-owned
+  // files that run no longer produces; only manifested files are ever
+  // deleted, so user files beside the output are never touched.
+  const list = [...files.keys()].sort()
+  files.set(MANIFEST, JSON.stringify(
+    { generated: 'tabnas-lsp-gen', files: list }, null, 1) + '\n')
+
+  let previous = []
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(out, MANIFEST), 'utf8'))
+    if (Array.isArray(m.files)) previous = m.files
+  } catch (e) {
+    // no previous run
+  }
+  const stale = previous.filter((rel) => !files.has(rel))
+  for (const rel of stale) {
+    try {
+      fs.unlinkSync(path.join(out, rel))
+    } catch (e) {
+      // already gone
+    }
+  }
+  // Prune directories the deletions emptied.
+  for (const rel of stale) {
+    let dir = path.dirname(path.join(out, rel))
+    const stop = path.resolve(out)
+    while (path.resolve(dir) !== stop) {
+      try {
+        fs.rmdirSync(dir) // fails (kept) unless empty
+      } catch (e) {
+        break
+      }
+      dir = path.dirname(dir)
+    }
+  }
+
   for (const [rel, content] of files) {
     const abs = path.join(out, rel)
     fs.mkdirSync(path.dirname(abs), { recursive: true })

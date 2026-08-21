@@ -218,3 +218,34 @@ func TestAstralRangeConversion(t *testing.T) {
 		t.Fatalf("astral token range %+v, want chars 1..3", r)
 	}
 }
+
+func TestMultilineTokensSplitPerLine(t *testing.T) {
+	// Mirrors the TS case "multiline tokens split into line-local
+	// spans": a block comment spanning lines must not emit one token
+	// whose length crosses the line break.
+	instances, inst, entry := makeStack(t)
+	d := doc("{\"a\":1,/*x\ny*/\"b\":2}")
+	a := Analyze(instances, inst, entry, d)
+	lines := []string{"{\"a\":1,/*x", "y*/\"b\":2}"}
+	line, char := 0, 0
+	sawContinuation := false
+	data := a.SemanticTokens.Data
+	for i := 0; i+4 < len(data); i += 5 {
+		if 0 < data[i] {
+			line += data[i]
+			char = data[i+1]
+		} else {
+			char += data[i+1]
+		}
+		length := data[i+2]
+		if char+length > UTF16Len(lines[line]) {
+			t.Fatalf("token crosses its line: line %d char %d len %d", line, char, length)
+		}
+		if 1 == line && 0 == char {
+			sawContinuation = true
+		}
+	}
+	if !sawContinuation {
+		t.Fatal("no continuation span on the second line")
+	}
+}

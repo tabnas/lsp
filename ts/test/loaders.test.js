@@ -82,6 +82,21 @@ describe('lsp-firewall', () => {
     const issues = firewallSpec({ rule }, parserMod)
     assert.ok(issues.some((i) => /more than 5000/.test(i.message)))
   })
+
+  it('caps total alternates: one rule cannot smuggle an alts bomb', () => {
+    const alts = []
+    for (let i = 0; i < 10001; i++) alts.push({ s: '#NR' })
+    const issues = firewallSpec({ rule: { top: { open: alts } } }, parserMod)
+    assert.ok(issues.some((i) => /alternates in total/.test(i.message)),
+      JSON.stringify(issues.slice(0, 2)))
+  })
+
+  it('refuses pathological nesting instead of recursing off the stack', () => {
+    let deep = { x: 1 }
+    for (let i = 0; i < 5000; i++) deep = { d: deep }
+    const issues = firewallSpec({ options: deep }, parserMod)
+    assert.ok(issues.some((i) => /nesting deeper/.test(i.message)))
+  })
 })
 
 describe('lsp-loader-spec', () => {
@@ -112,6 +127,22 @@ describe('lsp-loader-spec', () => {
     assert.deepEqual(val(tn.parse('[true,null]')), [true, null])
   })
 
+  it('L2: an entry configuring options.parse keeps recovery on', () => {
+    // A shallow options merge dropped recover.enabled the moment an
+    // entry set ANY parse option — multi-error diagnostics silently
+    // gone. The nested merge keeps the default under entry overrides.
+    const makeInstance = makeLoader()
+    const entry = normalize({
+      name: 'jsonspec', languageId: 'jsonspec',
+      load: { spec: JSON_GRAMMAR },
+      options: { parse: {} },
+    })
+    const tn = makeInstance(entry)
+    const out = tn.parse('{"a":true blah,"b":2}')
+    assert.ok(Array.isArray(out.errors) && 1 <= out.errors.length,
+      'recovery lost under options.parse: ' + JSON.stringify(out))
+  })
+
   it('L2: recovery is on — a broken document yields errors, not a throw', () => {
     const makeInstance = makeLoader()
     const entry = normalize({
@@ -135,19 +166,48 @@ describe('lsp-loader-spec', () => {
   })
 
   it('sandbox: a spec path may not escape its folder', () => {
+    const os = require('os')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsp-sbx-'))
+    const ws = path.join(root, 'project')
+    fs.mkdirSync(path.join(ws, 'sub'), { recursive: true })
+    fs.mkdirSync(path.join(root, 'project-evil'))
+    fs.writeFileSync(path.join(root, 'outside.json'), '{}')
+    fs.writeFileSync(path.join(root, 'project-evil', 'x.json'), '{}')
+    fs.writeFileSync(path.join(ws, 'sub', 'x.json'), '{}')
+
     assert.throws(
-      () => resolveSandboxed('../../../etc/passwd', '/tmp/ws/project'),
+      () => resolveSandboxed('../outside.json', ws),
       /escapes its workspace folder/)
     assert.throws(
-      () => resolveSandboxed('/etc/passwd', '/tmp/ws/project'),
+      () => resolveSandboxed(path.join(root, 'outside.json'), ws),
       /escapes its workspace folder/)
     // Sibling-prefix folders must not pass the check by string prefix.
     assert.throws(
-      () => resolveSandboxed('../project-evil/x.json', '/tmp/ws/project'),
+      () => resolveSandboxed('../project-evil/x.json', ws),
       /escapes its workspace folder/)
     assert.equal(
-      resolveSandboxed('sub/x.json', '/tmp/ws/project'),
-      path.join('/tmp/ws/project', 'sub', 'x.json'))
+      resolveSandboxed('sub/x.json', ws),
+      fs.realpathSync(path.join(ws, 'sub', 'x.json')))
+  })
+
+  it('sandbox: a symlink out of the folder is refused', (t) => {
+    // The check runs on REAL paths: a lexical prefix test accepts
+    // `grammar.json` that links outside the workspace, and the read
+    // then follows the link.
+    const os = require('os')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsp-sbl-'))
+    const ws = path.join(root, 'project')
+    fs.mkdirSync(ws, { recursive: true })
+    fs.writeFileSync(path.join(root, 'secret.json'), '{}')
+    try {
+      fs.symlinkSync(path.join(root, 'secret.json'), path.join(ws, 'grammar.json'))
+    } catch (e) {
+      t.skip('symlinks unavailable: ' + e.message)
+      return
+    }
+    assert.throws(
+      () => resolveSandboxed('grammar.json', ws),
+      /escapes its workspace folder \(via symlink\)/)
   })
 })
 
@@ -192,6 +252,43 @@ describe('lsp-loader-trust', () => {
     })
     const entry = normalize({ name: 'fleetmod', languageId: 'fleetmod' })
     assert.ok(makeInstance(entry))
+  })
+})
+
+describe('lsp-loader-module-errors', () => {
+  it('a module that exists but throws surfaces its own error', () => {
+    // Falling back to @tabnas/<name> on ANY throw either hid the real
+    // initialization error behind a not-found for a name nobody asked
+    // for, or silently served a different package.
+    const boom = new Error('database on fire')
+    const makeInstance = makeLoader((name) => {
+      if ('@tabnas/parser' === name) return parserMod
+      if ('broken-plugin' === name) throw boom
+      throw Object.assign(new Error("Cannot find module '" + name + "'"),
+        { code: 'MODULE_NOT_FOUND' })
+    })
+    const entry = normalize({
+      name: 'broken-plugin', languageId: 'broken',
+      load: { module: 'broken-plugin' },
+    })
+    assert.throws(() => makeInstance(entry), /database on fire/)
+  })
+
+  it('the @tabnas fallback still works for short names', () => {
+    const makeInstance = makeLoader((name) => {
+      if ('@tabnas/parser' === name) return parserMod
+      if ('@tabnas/shorty' === name) {
+        return function shorty(tn) {
+          tn.rule('shortied', (rs) => rs.open([{ s: [] }]))
+          return tn
+        }
+      }
+      throw Object.assign(new Error("Cannot find module '" + name + "'"),
+        { code: 'MODULE_NOT_FOUND' })
+    })
+    const entry = normalize({ name: 'shorty', languageId: 'shorty' })
+    const tn = makeInstance(entry)
+    assert.ok(Object.keys(tn.rule()).includes('shortied'))
   })
 })
 

@@ -162,6 +162,15 @@ function semanticTokens(lexEvents, entry, doc) {
   const data = []
   let prevLine = 0
   let prevChar = 0
+  const emit = (line, char, len, typeI) => {
+    if (len < 1) return
+    const dLine = line - prevLine
+    const dChar = 0 === dLine ? char - prevChar : char
+    if (dLine < 0 || (0 === dLine && dChar < 0)) return // out-of-order guard
+    data.push(dLine, dChar, len, typeI, 0)
+    prevLine = line
+    prevChar = char
+  }
   for (const t of reconcile(lexEvents)) {
     const name = t.name || (inst && String(inst.token(t.tin))) || ''
     const type = tokenType(name, overrides)
@@ -171,12 +180,20 @@ function semanticTokens(lexEvents, entry, doc) {
     const line = Math.max(0, t.rI - 1)
     const char = Math.max(0, t.cI - 1)
     const len = Math.max(1, t.len | 0)
-    const dLine = line - prevLine
-    const dChar = 0 === dLine ? char - prevChar : char
-    if (dLine < 0 || (0 === dLine && dChar < 0)) continue // out-of-order guard
-    data.push(dLine, dChar, len, typeI, 0)
-    prevLine = line
-    prevChar = char
+    // A token spanning lines (multiline string, block comment) is
+    // split into line-local spans: multiline semantic tokens are an
+    // OPTIONAL client capability, and an unsplit one mis-highlights or
+    // is rejected by clients without it.
+    const text = doc ? doc.text.substr(t.sI, len) : ''
+    if (text.includes('\n')) {
+      const parts = text.split('\n')
+      for (let i = 0; i < parts.length; i++) {
+        const seg = parts[i].replace(/\r$/, '')
+        emit(line + i, 0 === i ? char : 0, seg.length, typeI)
+      }
+    } else {
+      emit(line, char, len, typeI)
+    }
   }
   return { data, legend: LEGEND }
 }

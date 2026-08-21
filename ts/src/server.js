@@ -83,6 +83,37 @@ function startServer(opts) {
   const timers = new Map()
   const lastGood = new Map() // uri -> { version, analysis }
   let workspaceFolders = []
+  let initLangs = []
+
+  // Build (or rebuild) the registry's workspace tier from
+  // initializationOptions.languages plus each folder's .tabnas/lsp.json
+  // (dynamic add, design §6). Called at initialize and again whenever a
+  // manifest changes — invalidating instances alone would keep serving
+  // the OLD entry objects: edited grammar paths and options would be
+  // ignored, added languages never routed, removed ones never dropped.
+  function rebuildRegistry() {
+    for (const e of registry ? registry.all() : []) {
+      if ('workspace' === e._source) instances.invalidate(e)
+    }
+    const workspace = []
+    const defaultDir = workspaceFolders[0] || process.cwd()
+    for (const e of initLangs) {
+      workspace.push(Object.assign(
+        { _source: 'workspace', _dir: defaultDir }, e))
+    }
+    for (const folder of workspaceFolders) {
+      workspace.push(...readWorkspaceManifest(folder, (msg) =>
+        connection.console.warn('tabnas-lsp: workspace manifest ignored: ' + msg)))
+    }
+    registry = new Registry(
+      baseEntries(),
+      (opts?.workspaceEntries || []).concat(workspace),
+      opts?.userEntries,
+    )
+    for (const e of registry.all()) {
+      if ('workspace' === e._source) instances.invalidate(e)
+    }
+  }
 
   connection.onInitialize((params) => {
     const init = params?.initializationOptions || {}
@@ -98,25 +129,8 @@ function startServer(opts) {
       if (root) workspaceFolders = [root]
     }
 
-    // Dynamic add (design §6): initializationOptions.languages plus
-    // each folder's .tabnas/lsp.json, workspace tier of the registry.
-    const workspace = []
-    const initLangs = Array.isArray(init.languages) ? init.languages : []
-    const defaultDir = workspaceFolders[0] || process.cwd()
-    for (const e of initLangs) {
-      workspace.push(Object.assign(
-        { _source: 'workspace', _dir: defaultDir }, e))
-    }
-    for (const folder of workspaceFolders) {
-      workspace.push(...readWorkspaceManifest(folder, (msg) =>
-        connection.console.warn('tabnas-lsp: workspace manifest ignored: ' + msg)))
-    }
-
-    registry = new Registry(
-      baseEntries(),
-      (opts?.workspaceEntries || []).concat(workspace),
-      opts?.userEntries,
-    )
+    initLangs = Array.isArray(init.languages) ? init.languages : []
+    rebuildRegistry()
 
     return {
       capabilities: {
@@ -162,14 +176,30 @@ function startServer(opts) {
       .map((c) => folderPathOf(c.uri))
       .filter(Boolean)
     if (0 === changedPaths.length) return
+
+    // A changed manifest means the workspace TIER changed — added,
+    // removed, or re-configured languages — so the registry itself is
+    // rebuilt, and every open document re-resolves and re-analyzes.
+    const manifestChanged = workspaceFolders.some((folder) =>
+      changedPaths.includes(path.join(folder, WORKSPACE_MANIFEST)))
+    if (manifestChanged) {
+      rebuildRegistry()
+      for (const doc of docs.docs.values()) {
+        lastGood.delete(doc.uri)
+        schedule(doc.uri)
+      }
+      return
+    }
+
+    // Otherwise: a grammar source file changed — rebuild that entry's
+    // instance and re-analyze its documents.
     for (const entry of registry.all()) {
       if ('workspace' !== entry._source || null == entry._dir) continue
       const file = entry.load?.grammar ||
         ('string' === typeof entry.load?.spec ? entry.load.spec : null)
       if (null == file) continue
       const abs = path.resolve(entry._dir, file)
-      if (changedPaths.includes(abs) ||
-        changedPaths.includes(path.join(entry._dir, WORKSPACE_MANIFEST))) {
+      if (changedPaths.includes(abs)) {
         instances.invalidate(entry)
         for (const doc of docs.docs.values()) {
           if (entryFor(doc) === entry) schedule(doc.uri)

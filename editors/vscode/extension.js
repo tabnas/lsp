@@ -7,7 +7,7 @@ let client
 
 function activate() {
   const command = vscode.workspace.getConfiguration('tabnas')
-    .get('serverPath') || "tabnas-lsp"
+    .get("serverPath") || "tabnas-lsp"
   client = new LanguageClient(
     "tabnas",
     "tabnas language server",

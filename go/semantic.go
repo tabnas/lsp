@@ -11,6 +11,7 @@ package lsp
 import (
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // DefaultTokenTypes maps engine-standard token names (railroad's CANON
@@ -110,6 +111,10 @@ func reconcile(events []tokenPoint) []tokenPoint {
 
 // SemanticTokensOf derives the delta-encoded token data (line and
 // character deltas in UTF-16 units, per the negotiated encoding).
+// Tokens spanning lines are split into line-local spans, mirroring the
+// TS core: multiline semantic tokens are an optional client
+// capability, and an unsplit one mis-highlights or is rejected by
+// clients without it.
 func SemanticTokensOf(events []tokenPoint, entry *Entry, doc *Doc) *SemanticTokens {
 	var overrides map[string]string
 	if nil != entry {
@@ -117,6 +122,22 @@ func SemanticTokensOf(events []tokenPoint, entry *Entry, doc *Doc) *SemanticToke
 	}
 	data := []int{}
 	prevLine, prevChar := 0, 0
+	emit := func(line, char, length, typeI int) {
+		if length < 1 {
+			return
+		}
+		dLine := line - prevLine
+		dChar := char
+		if 0 == dLine {
+			dChar = char - prevChar
+		}
+		if dLine < 0 || (0 == dLine && dChar < 0) {
+			return // out-of-order guard
+		}
+		data = append(data, dLine, dChar, length, typeI, 0)
+		prevLine = line
+		prevChar = char
+	}
 	for _, t := range reconcile(events) {
 		typ := TokenType(t.Name, overrides)
 		if "" == typ {
@@ -127,18 +148,18 @@ func SemanticTokensOf(events []tokenPoint, entry *Entry, doc *Doc) *SemanticToke
 			continue
 		}
 		pos := doc.PosFromEngine(t.RI, t.CI)
-		length := srcLenUTF16(t.Src)
-		dLine := pos.Line - prevLine
-		dChar := pos.Character
-		if 0 == dLine {
-			dChar = pos.Character - prevChar
+		if strings.Contains(t.Src, "\n") {
+			for i, part := range strings.Split(t.Src, "\n") {
+				seg := strings.TrimSuffix(part, "\r")
+				char := 0
+				if 0 == i {
+					char = pos.Character
+				}
+				emit(pos.Line+i, char, UTF16Len(seg), typeI)
+			}
+		} else {
+			emit(pos.Line, pos.Character, srcLenUTF16(t.Src), typeI)
 		}
-		if dLine < 0 || (0 == dLine && dChar < 0) {
-			continue // out-of-order guard
-		}
-		data = append(data, dLine, dChar, length, typeI, 0)
-		prevLine = pos.Line
-		prevChar = pos.Character
 	}
 	return &SemanticTokens{Data: data, Legend: Legend}
 }
