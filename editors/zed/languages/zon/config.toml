@@ -1,0 +1,3 @@
+name = "zon"
+grammar = "zon"
+path_suffixes = ["zon"]

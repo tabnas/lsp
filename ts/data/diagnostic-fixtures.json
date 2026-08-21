@@ -1,0 +1,2888 @@
+{
+ "generated": "tools/gen-fixtures.js",
+ "count": 262,
+ "fixtures": [
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 2,
+   "input": "x = <foo>",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 3,
+   "input": "y = \"a\" <foo>",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 4,
+   "input": "y = ( <foo> / \"a\" )",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 5,
+   "input": "y = *<foo>",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 6,
+   "input": "NR = <number>",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 7,
+   "input": "top = NR\n<everything> = <remove>",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 8,
+   "input": "top = NR\n<all> = \"x\"",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 9,
+   "input": "g = %x110000",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "abnf",
+   "file": "alignment-abnf-errors.tsv",
+   "row": 10,
+   "input": "g = %d555864801982",
+   "expect": {
+    "codes": [
+     "abnf"
+    ]
+   }
+  },
+  {
+   "languageId": "chess",
+   "file": "comments.tsv",
+   "row": 51,
+   "input": "1. e4 {never closed",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "chess",
+   "file": "errors.tsv",
+   "row": 35,
+   "input": "1. e4 {unterminated *",
+   "expect": {
+    "codes": [
+     "this"
+    ]
+   }
+  },
+  {
+   "languageId": "chess",
+   "file": "errors.tsv",
+   "row": 52,
+   "input": "1. e4 zz *",
+   "expect": {
+    "codes": [
+     "not"
+    ]
+   }
+  },
+  {
+   "languageId": "chess",
+   "file": "errors.tsv",
+   "row": 53,
+   "input": "1. Ke9 *",
+   "expect": {
+    "codes": [
+     "not"
+    ]
+   }
+  },
+  {
+   "languageId": "chess",
+   "file": "errors.tsv",
+   "row": 54,
+   "input": "[Event \"x\n\n1. e4 *",
+   "expect": {
+    "codes": [
+     "a"
+    ]
+   }
+  },
+  {
+   "languageId": "css",
+   "file": "reworkcss.tsv",
+   "row": 20,
+   "input": "/*",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "css",
+   "file": "reworkcss.tsv",
+   "row": 21,
+   "input": "thing { color: red; } /* b { color: blue; }",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 12,
+   "input": "a\n\"",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 13,
+   "input": "a\n\"\"\"",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 14,
+   "input": "a\n\"\"\"\"\"",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 15,
+   "input": "a\n\"\"\"\"\"\"\"",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 16,
+   "input": "a\n\"b",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 17,
+   "input": "a\n\"b\"\"",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "double-quote.tsv",
+   "row": 18,
+   "input": "a\n\"b\"\"c",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "field-exact.tsv",
+   "row": 8,
+   "input": "a,b\n1,2,3",
+   "expect": {
+    "codes": [
+     "csv_extra_field"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "field-exact.tsv",
+   "row": 9,
+   "input": "a,b,c\n1,2",
+   "expect": {
+    "codes": [
+     "csv_missing_field"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "field-exact.tsv",
+   "row": 11,
+   "input": "a,b\n1,2,3",
+   "expect": {
+    "codes": [
+     "csv_extra_field"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "field-exact.tsv",
+   "row": 12,
+   "input": "a,b,c\n1,2",
+   "expect": {
+    "codes": [
+     "csv_missing_field"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "field-exact.tsv",
+   "row": 14,
+   "input": "1,2,3",
+   "expect": {
+    "codes": [
+     "csv_extra_field"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "field-exact.tsv",
+   "row": 16,
+   "input": "1,2,3",
+   "expect": {
+    "codes": [
+     "csv_extra_field"
+    ]
+   }
+  },
+  {
+   "languageId": "csv",
+   "file": "unstrict.tsv",
+   "row": 3,
+   "input": "a\n{x:1}y",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "directive",
+   "file": "close-boundary.tsv",
+   "row": 23,
+   "input": "[1>",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "directive",
+   "file": "close-boundary.tsv",
+   "row": 24,
+   "input": "{x:1>",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "directive",
+   "file": "close-foo.tsv",
+   "row": 30,
+   "input": ">",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "directive",
+   "file": "close-foo.tsv",
+   "row": 31,
+   "input": "{x:>}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "directive",
+   "file": "happy.tsv",
+   "row": 40,
+   "input": "@",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "directive",
+   "file": "happy.tsv",
+   "row": 41,
+   "input": "[@]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 2,
+   "input": "<not-a-feed/>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 3,
+   "input": "<html><body/></html>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 4,
+   "input": "<kml xmlns=\"http://www.opengis.net/kml/2.2\"/>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 5,
+   "input": "<Channel xmlns=\"http://purl.org/net/rss1.1#\"/>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 6,
+   "input": "<opml version=\"2.0\"><body/></opml>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 7,
+   "input": "<OpenSearchDescription xmlns=\"http://a9.com/-/spec/opensearch/1.1/\"/>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 8,
+   "input": "<FEED/>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "errors.tsv",
+   "row": 9,
+   "input": "<entry xmlns=\"http://www.w3.org/2005/Atom\"><title>x</title></entry>",
+   "expect": {
+    "codes": [
+     "unrecognized"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 22,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>x</title></feed> trailing",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 23,
+   "input": "<rss version=\"2.0\"><channel/></rss>garbage",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 24,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"/>}",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 25,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"/>,",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 29,
+   "input": "# c\n<feed xmlns=\"http://www.w3.org/2005/Atom\"/>",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 30,
+   "input": "// c\n<feed xmlns=\"http://www.w3.org/2005/Atom\"/>",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 31,
+   "input": "/* c */<feed xmlns=\"http://www.w3.org/2005/Atom\"/>",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 34,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"/>// x",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "leniency.tsv",
+   "row": 35,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"/>\n# x",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "nonxml.tsv",
+   "row": 12,
+   "input": "{a:1}",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "nonxml.tsv",
+   "row": 13,
+   "input": "{\"a\":1}",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "nonxml.tsv",
+   "row": 14,
+   "input": "[1,2,3]",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "nonxml.tsv",
+   "row": 15,
+   "input": "a:1",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "nonxml.tsv",
+   "row": 16,
+   "input": "1",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "nonxml.tsv",
+   "row": 17,
+   "input": "hello",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "xml-layer.tsv",
+   "row": 18,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"><dc:language>en</dc:language></feed>",
+   "expect": {
+    "codes": [
+     "element"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "xml-layer.tsv",
+   "row": 21,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>x</feed></title>",
+   "expect": {
+    "codes": [
+     "closing"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "xml-layer.tsv",
+   "row": 23,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>a&#X26;b</title></feed>",
+   "expect": {
+    "codes": [
+     "malformed"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "xml-layer.tsv",
+   "row": 25,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:a=\"http://x\ny\"/>",
+   "expect": {
+    "codes": [
+     "namespace"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "xml-layer.tsv",
+   "row": 28,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"/><extra/>",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "feed",
+   "file": "xml-layer.tsv",
+   "row": 29,
+   "input": "<feed xmlns=\"http://www.w3.org/2005/Atom\"/>junk",
+   "expect": {
+    "codes": [
+     "character"
+    ]
+   }
+  },
+  {
+   "languageId": "hoover",
+   "file": "escapes.tsv",
+   "row": 11,
+   "input": "<a\\\\zb> %",
+   "expect": {
+    "codes": [
+     "1"
+    ]
+   }
+  },
+  {
+   "languageId": "hoover",
+   "file": "escapes.tsv",
+   "row": 12,
+   "input": "<a\\\\\nb> %",
+   "expect": {
+    "codes": [
+     "2"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-duplicate-error.tsv",
+   "row": 5,
+   "input": "[a]\nx=1\n[a]\ny=2",
+   "expect": {
+    "codes": [
+     "duplicate_section"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-duplicate-error.tsv",
+   "row": 6,
+   "input": "[a.b]\nx=1\n[a.b]\ny=2",
+   "expect": {
+    "codes": [
+     "duplicate_section"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-unterminated.tsv",
+   "row": 2,
+   "input": "[a",
+   "expect": {
+    "codes": [
+     "unterminated_section"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-unterminated.tsv",
+   "row": 3,
+   "input": "[a\nb=1",
+   "expect": {
+    "codes": [
+     "unterminated_section"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-unterminated.tsv",
+   "row": 4,
+   "input": "[a]\nx=1\n[b\ny=2",
+   "expect": {
+    "codes": [
+     "unterminated_section"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-unterminated.tsv",
+   "row": 5,
+   "input": "[a\n[b]\nx=1",
+   "expect": {
+    "codes": [
+     "unterminated_section"
+    ]
+   }
+  },
+  {
+   "languageId": "ini",
+   "file": "sections-unterminated.tsv",
+   "row": 6,
+   "input": "[a.b\nx=1",
+   "expect": {
+    "codes": [
+     "unterminated_section"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 2,
+   "input": "{",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 3,
+   "input": "[",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 4,
+   "input": "{\"a\":1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 5,
+   "input": "[1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 6,
+   "input": "\"abc",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 7,
+   "input": "{\"a\"}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 8,
+   "input": "{\"a\":1,}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 9,
+   "input": "{,}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 10,
+   "input": "{\"a\":1 \"b\":2}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 11,
+   "input": "[1,]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 12,
+   "input": "[1 2]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 13,
+   "input": "'single'",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 14,
+   "input": "{a:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 15,
+   "input": "[1,2,]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 16,
+   "input": "1 // note",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 17,
+   "input": "a:1,b:2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 18,
+   "input": "x,y,z",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 19,
+   "input": "1,2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 20,
+   "input": "0x10",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 21,
+   "input": ".5",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 22,
+   "input": "+1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 23,
+   "input": "True",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 24,
+   "input": "tru",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 25,
+   "input": "nul",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 26,
+   "input": "1.",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 27,
+   "input": "1e",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 28,
+   "input": "-",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 29,
+   "input": "\"\\\\q\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 30,
+   "input": "\"a\\\\zb\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 31,
+   "input": "\"\\\\v\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 32,
+   "input": "\"\\\\x41\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 33,
+   "input": "\"\\\\`\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 34,
+   "input": "\"\\\\u{41}\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 35,
+   "input": "\"\\\\uZ\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 36,
+   "input": "\"\\\\uZZZZ\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 37,
+   "input": "01",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 38,
+   "input": "00",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 39,
+   "input": "123abc",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 40,
+   "input": "[1,2]x",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 41,
+   "input": "nullnull",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 50,
+   "input": "[1]]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 51,
+   "input": "{}}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 52,
+   "input": "[\"x\"]]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 53,
+   "input": "[\"\"],",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 54,
+   "input": "1]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 55,
+   "input": "{\"a\": true} \"x\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 56,
+   "input": "[]]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 57,
+   "input": "1,",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 58,
+   "input": "\"a\" \"b\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 59,
+   "input": "null null",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "errors.tsv",
+   "row": 60,
+   "input": "[1] 2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 2,
+   "input": "{a:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 3,
+   "input": "[1,2,]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 4,
+   "input": "1 // note",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 5,
+   "input": "'x'",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 6,
+   "input": "a:1,b:2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 7,
+   "input": "x,y,z",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 8,
+   "input": "0x10",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 9,
+   "input": ".5",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 10,
+   "input": "+1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 11,
+   "input": "1.",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 12,
+   "input": "01",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 13,
+   "input": "\"\\\\x41\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 14,
+   "input": "\"\\\\u{41}\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 15,
+   "input": "\"\\\\v\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 16,
+   "input": "\"\\\\'\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 17,
+   "input": "\"\\\\`\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 18,
+   "input": "{\"a\":1}//c",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 19,
+   "input": "\"abc",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 20,
+   "input": "{1:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 21,
+   "input": "{1.5:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 22,
+   "input": "{true:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json",
+   "file": "reject-extended.tsv",
+   "row": 23,
+   "input": "{null:null,null:null}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "comments.tsv",
+   "row": 7,
+   "input": "# a comment\n42",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "infinity-nan.tsv",
+   "row": 8,
+   "input": "Infinity",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "infinity-nan.tsv",
+   "row": 9,
+   "input": "NaN",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "options.tsv",
+   "row": 5,
+   "input": "0x1F",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "options.tsv",
+   "row": 6,
+   "input": "",
+   "expect": {
+    "codes": [
+     "json5_empty"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "options.tsv",
+   "row": 7,
+   "input": "// only a comment",
+   "expect": {
+    "codes": [
+     "json5_no_value"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "options.tsv",
+   "row": 8,
+   "input": "/* only a comment */",
+   "expect": {
+    "codes": [
+     "json5_no_value"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "options.tsv",
+   "row": 9,
+   "input": "   ",
+   "expect": {
+    "codes": [
+     "json5_no_value"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "options.tsv",
+   "row": 26,
+   "input": "/* x",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "rejects-non-json5.tsv",
+   "row": 2,
+   "input": "foo",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "rejects-non-json5.tsv",
+   "row": 3,
+   "input": "0o17",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "rejects-non-json5.tsv",
+   "row": 4,
+   "input": "0b101",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "rejects-non-json5.tsv",
+   "row": 5,
+   "input": "1_000",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "rejects-non-json5.tsv",
+   "row": 6,
+   "input": "1,2,3",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "rejects-non-json5.tsv",
+   "row": 7,
+   "input": "a:1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "json5",
+   "file": "strings.tsv",
+   "row": 12,
+   "input": "`backtick`",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 15,
+   "input": "#",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 16,
+   "input": "# not a comment\n1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 17,
+   "input": "1 # not a comment",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 18,
+   "input": "{\"a\":\"b\"}#",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 19,
+   "input": "{\"a\":\"b\"}#{}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 22,
+   "input": "/* this is a",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 23,
+   "input": "/* this is a \ncomment",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "comments.tsv",
+   "row": 24,
+   "input": "/ ttt",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "keywords.tsv",
+   "row": 5,
+   "input": "nulllll",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "keywords.tsv",
+   "row": 6,
+   "input": "True",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "keywords.tsv",
+   "row": 7,
+   "input": "foo-bar",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "keywords.tsv",
+   "row": 8,
+   "input": "foo bar",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "numbers.tsv",
+   "row": 26,
+   "input": "-",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "numbers.tsv",
+   "row": 27,
+   "input": ".0",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 16,
+   "input": "\"\\\\v\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 18,
+   "input": "\"\\\\x42\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 19,
+   "input": "[\"\\\\x00\"]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 22,
+   "input": "\"test",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 23,
+   "input": "\"test\n\"",
+   "expect": {
+    "codes": [
+     "unprintable"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 24,
+   "input": "\"\t\"",
+   "expect": {
+    "codes": [
+     "unprintable"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 25,
+   "input": "\"\t \"",
+   "expect": {
+    "codes": [
+     "unprintable"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonc",
+   "file": "strings.tsv",
+   "row": 26,
+   "input": "\"\\0 \"",
+   "expect": {
+    "codes": [
+     "unprintable"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 2,
+   "input": "}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 3,
+   "input": "]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 4,
+   "input": ":",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 5,
+   "input": "\"unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 6,
+   "input": "'unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 7,
+   "input": "`unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 8,
+   "input": "/*",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-errors.tsv",
+   "row": 9,
+   "input": "a:1,2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 2,
+   "input": "[012]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 3,
+   "input": "[00]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 4,
+   "input": "[+1]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 5,
+   "input": "[-01]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 6,
+   "input": "[1.]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 7,
+   "input": "[-2.]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 8,
+   "input": "[.123]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 9,
+   "input": "[-.123]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 10,
+   "input": "[.2e-3]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 11,
+   "input": "[0.e1]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 12,
+   "input": "[2.e3]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 13,
+   "input": "[\"\\x41\"]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 14,
+   "input": "{\"a\":01}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 15,
+   "input": "{1:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 16,
+   "input": "{null:null,null:null}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 17,
+   "input": "{true:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 18,
+   "input": "{false:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 19,
+   "input": "{1.5:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "alignment-strict-json-mode-errors.tsv",
+   "row": 20,
+   "input": "{9999E9999:1}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "exclude-comma-errors.tsv",
+   "row": 2,
+   "input": "{\"a\":1,}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "exclude-strict-json-errors.tsv",
+   "row": 2,
+   "input": "\"unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "exclude-strict-json-errors.tsv",
+   "row": 3,
+   "input": "{\"a\":1,}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "exclude-strict-json-errors.tsv",
+   "row": 4,
+   "input": "[1,2,]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "exclude-strict-json-errors.tsv",
+   "row": 5,
+   "input": "a:1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "feature-comment-def-nolex-errors.tsv",
+   "row": 2,
+   "input": "a:1 ;c\nb:2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "feature-comment-def-remove-errors.tsv",
+   "row": 2,
+   "input": "a:1 #c\nb:2",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "include-json-errors.tsv",
+   "row": 2,
+   "input": "\"unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "include-json-errors.tsv",
+   "row": 3,
+   "input": "{\"a\":1,}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "include-json-errors.tsv",
+   "row": 4,
+   "input": "[1,2,]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "include-json-errors.tsv",
+   "row": 5,
+   "input": "a:1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "lex-errors.tsv",
+   "row": 2,
+   "input": "\"unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "lex-errors.tsv",
+   "row": 3,
+   "input": "'unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "lex-errors.tsv",
+   "row": 4,
+   "input": "`unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "lex-errors.tsv",
+   "row": 5,
+   "input": "/*unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "lex-errors.tsv",
+   "row": 6,
+   "input": "{\"a\":\"unterminated}",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "lex-errors.tsv",
+   "row": 7,
+   "input": "[\"unterminated]",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 8,
+   "input": "{a:1",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 9,
+   "input": "{",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 10,
+   "input": "[1",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 11,
+   "input": "[1,",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 12,
+   "input": "{a:1,",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 13,
+   "input": "a:{b:",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 14,
+   "input": "{a:",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "jsonic",
+   "file": "rule-finish-errors.tsv",
+   "row": 15,
+   "input": "[",
+   "expect": {
+    "codes": [
+     "end_of_source"
+    ]
+   }
+  },
+  {
+   "languageId": "multisource",
+   "file": "errors.tsv",
+   "row": 2,
+   "input": "x:@a",
+   "expect": {
+    "codes": [
+     "multisource_not_found"
+    ]
+   }
+  },
+  {
+   "languageId": "multisource",
+   "file": "errors.tsv",
+   "row": 3,
+   "input": "@\"a.jsonic\"",
+   "expect": {
+    "codes": [
+     "multisource_cycle"
+    ]
+   }
+  },
+  {
+   "languageId": "multisource",
+   "file": "errors.tsv",
+   "row": 4,
+   "input": "@\"a.jsonic\"",
+   "expect": {
+    "codes": [
+     "multisource_cycle"
+    ]
+   }
+  },
+  {
+   "languageId": "multisource",
+   "file": "errors.tsv",
+   "row": 6,
+   "input": "k:@\"a.json\"",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-errors.tsv",
+   "row": 2,
+   "input": "\"unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-errors.tsv",
+   "row": 3,
+   "input": "{\"a\":1,}",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-errors.tsv",
+   "row": 4,
+   "input": "[1,2,]",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-errors.tsv",
+   "row": 5,
+   "input": "a:1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-utf8-errors.tsv",
+   "row": 2,
+   "input": "\"\\u{110000}\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-utf8-errors.tsv",
+   "row": 3,
+   "input": "\"\\u{}\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-utf8-errors.tsv",
+   "row": 4,
+   "input": "\"\\uZZZZ\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-utf8-errors.tsv",
+   "row": 5,
+   "input": "\"\\u{GGGG}\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "parser",
+   "file": "include-json-utf8-errors.tsv",
+   "row": 6,
+   "input": "\"\\u{1234567}\"",
+   "expect": {
+    "codes": [
+     "invalid_unicode"
+    ]
+   }
+  },
+  {
+   "languageId": "proto",
+   "file": "version-detect.tsv",
+   "row": 9,
+   "input": "syntax = \"proto3\";",
+   "expect": {
+    "codes": [
+     "version"
+    ]
+   }
+  },
+  {
+   "languageId": "toml",
+   "file": "errors.tsv",
+   "row": 2,
+   "input": "a = ",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "toml",
+   "file": "errors.tsv",
+   "row": 3,
+   "input": "= 1",
+   "expect": {
+    "codes": [
+     "unexpected"
+    ]
+   }
+  },
+  {
+   "languageId": "toml",
+   "file": "errors.tsv",
+   "row": 9,
+   "input": "\"unterminated",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "toml",
+   "file": "errors.tsv",
+   "row": 13,
+   "input": "a = \"abc ",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "toml",
+   "file": "errors.tsv",
+   "row": 14,
+   "input": "a = 'abc ",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "toml",
+   "file": "errors.tsv",
+   "row": 15,
+   "input": "a = \"\"\"abc ",
+   "expect": {
+    "codes": [
+     "unterminated_string"
+    ]
+   }
+  },
+  {
+   "languageId": "zon",
+   "file": "errors.tsv",
+   "row": 3,
+   "input": "0X2A",
+   "expect": {
+    "codes": [
+     "zon_number"
+    ]
+   }
+  },
+  {
+   "languageId": "zon",
+   "file": "errors.tsv",
+   "row": 4,
+   "input": ".@\"\"",
+   "expect": {
+    "codes": [
+     "zon_ident"
+    ]
+   }
+  },
+  {
+   "languageId": "zon",
+   "file": "errors.tsv",
+   "row": 5,
+   "input": "'\\\\u{110000}'",
+   "expect": {
+    "codes": [
+     "zon_char"
+    ]
+   }
+  },
+  {
+   "languageId": "zon",
+   "file": "errors.tsv",
+   "row": 6,
+   "input": "///x",
+   "expect": {
+    "codes": [
+     "zon_doc_comment"
+    ]
+   }
+  },
+  {
+   "languageId": "zon",
+   "file": "errors.tsv",
+   "row": 7,
+   "input": ".{ .a = 1, .a = 2 }",
+   "expect": {
+    "codes": [
+     "zon_dup_field"
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,76 @@
+{
+  "comment": [
+    "Cross-runtime LSP conformance fixtures (design §13): executed by",
+    "ts/test/conformance.test.js and go/conformance_test.go against the",
+    "shared pure-data grammar (json-grammar.json). Values were derived",
+    "from the canonical TypeScript pipeline; a Go mismatch is a port",
+    "defect, not a fixture update — TS is canonical. Positions are LSP",
+    "units: 0-based lines, UTF-16 characters. codes lists every",
+    "diagnostic's code in order; firstRange pins the first diagnostic's",
+    "converted range (the astral case is why it exists); outline is the",
+    "nested symbol-name tree; completions list sorted item labels."
+  ],
+  "analyze": [
+    {
+      "name": "clean parse",
+      "input": "{\"a\":[1,2]}",
+      "codes": [],
+      "outline": [{ "name": "Object", "children": [{ "name": "Array", "children": [] }] }]
+    },
+    {
+      "name": "single error with range",
+      "input": "{\"a\":true blah,\"b\":2}",
+      "codes": ["unexpected"],
+      "firstRange": { "start": { "line": 0, "character": 10 }, "end": { "line": 0, "character": 14 } },
+      "outline": [{ "name": "Object", "children": [] }]
+    },
+    {
+      "name": "multi-error recovery",
+      "input": "{\"a\":true blah,\"b\":false blah,\"c\":true blah}",
+      "codes": ["unexpected", "unexpected", "unexpected"],
+      "firstRange": { "start": { "line": 0, "character": 10 }, "end": { "line": 0, "character": 14 } },
+      "outline": [{ "name": "Object", "children": [] }]
+    },
+    {
+      "name": "double separator",
+      "input": "{\"a\":1,,}",
+      "codes": ["unexpected"],
+      "firstRange": { "start": { "line": 0, "character": 7 }, "end": { "line": 0, "character": 8 } },
+      "outline": [{ "name": "Object", "children": [] }]
+    },
+    {
+      "name": "unterminated list at EOF",
+      "input": "[1,2",
+      "codes": ["unexpected"],
+      "firstRange": { "start": { "line": 0, "character": 4 }, "end": { "line": 0, "character": 4 } },
+      "outline": [{ "name": "Array", "children": [] }]
+    },
+    {
+      "name": "astral character before the error",
+      "input": "\"𝄞\" q",
+      "codes": ["unexpected"],
+      "firstRange": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 6 } },
+      "outline": []
+    }
+  ],
+  "completions": [
+    {
+      "name": "after a key",
+      "input": "{\"a\"",
+      "position": { "line": 0, "character": 4 },
+      "labels": [":"]
+    },
+    {
+      "name": "after a colon",
+      "input": "{\"a\":",
+      "position": { "line": 0, "character": 5 },
+      "labels": ["#NR", "#ST", "#VL", ",", "[", "{", "}"]
+    },
+    {
+      "name": "after a separator",
+      "input": "[1,",
+      "position": { "line": 0, "character": 3 },
+      "labels": ["#NR", "#ST", "#VL", ",", "[", "]", "{"]
+    }
+  ]
+}

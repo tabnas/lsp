@@ -1,0 +1,3 @@
+name = "pgn"
+grammar = "pgn"
+path_suffixes = ["pgn"]

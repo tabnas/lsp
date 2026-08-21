@@ -1,0 +1,3 @@
+name = "jsonic"
+grammar = "jsonic"
+path_suffixes = ["jsonic"]

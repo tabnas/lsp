@@ -1,0 +1,424 @@
+{
+  "generated": "tools/gen-registry.js",
+  "count": 27,
+  "entries": [
+    {
+      "name": "@tabnas/abnf",
+      "extensions": [
+        ".abnf"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/bnf",
+      "errorCodes": [],
+      "pluginKind": "compiler"
+    },
+    {
+      "name": "@tabnas/bnf",
+      "extensions": [
+        ".bnf"
+      ],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "pluginKind": "compiler"
+    },
+    {
+      "name": "@tabnas/c",
+      "extensions": [
+        ".c",
+        ".h"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [],
+      "enabled": false,
+      "grammarKind": "external"
+    },
+    {
+      "name": "@tabnas/chess",
+      "extensions": [
+        ".pgn"
+      ],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "languageId": "pgn"
+    },
+    {
+      "name": "@tabnas/css",
+      "extensions": [
+        ".css"
+      ],
+      "mediaTypes": [
+        "text/css"
+      ],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [],
+      "enabled": false
+    },
+    {
+      "name": "@tabnas/csv",
+      "extensions": [
+        ".csv"
+      ],
+      "mediaTypes": [
+        "text/csv"
+      ],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [
+        "csv_extra_field",
+        "csv_missing_field"
+      ],
+      "languageId": "csv",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/debug",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "pluginKind": "modifier",
+      "grammarKind": "imperative"
+    },
+    {
+      "name": "@tabnas/directive",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "pluginKind": "modifier"
+    },
+    {
+      "name": "@tabnas/ebnf",
+      "extensions": [
+        ".ebnf"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/bnf",
+      "errorCodes": [],
+      "pluginKind": "compiler"
+    },
+    {
+      "name": "@tabnas/expr",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [],
+      "pluginKind": "modifier",
+      "grammarKind": "imperative"
+    },
+    {
+      "name": "@tabnas/feed",
+      "extensions": [
+        ".rss",
+        ".atom"
+      ],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "pluginKind": "grammar"
+    },
+    {
+      "name": "@tabnas/gbnf",
+      "extensions": [
+        ".gbnf"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/bnf",
+      "errorCodes": [],
+      "pluginKind": "compiler"
+    },
+    {
+      "name": "@tabnas/hoover",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "pluginKind": "modifier",
+      "grammarKind": "imperative"
+    },
+    {
+      "name": "@tabnas/ini",
+      "extensions": [
+        ".ini"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [
+        "duplicate_section",
+        "unterminated_section"
+      ],
+      "enabled": false,
+      "languageId": "ini",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/json",
+      "extensions": [
+        ".json"
+      ],
+      "mediaTypes": [
+        "application/json"
+      ],
+      "base": null,
+      "errorCodes": [],
+      "enabled": false,
+      "languageId": "json",
+      "grammarKind": "data",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/json5",
+      "extensions": [
+        ".json5"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [
+        "json5_empty",
+        "json5_no_value"
+      ],
+      "languageId": "json5",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close",
+        "sync"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/jsonc",
+      "extensions": [
+        ".jsonc"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [],
+      "enabled": false,
+      "languageId": "jsonc",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/jsonic",
+      "extensions": [
+        ".jsonic"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/json",
+      "errorCodes": [],
+      "languageId": "jsonic",
+      "grammarKind": "imperative",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close",
+        "sync"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/jsonl",
+      "extensions": [
+        ".jsonl"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/json",
+      "errorCodes": [],
+      "languageId": "jsonl",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/markdown",
+      "extensions": [
+        ".md",
+        ".markdown"
+      ],
+      "mediaTypes": [
+        "text/markdown"
+      ],
+      "base": null,
+      "errorCodes": [],
+      "enabled": false,
+      "grammarKind": "external"
+    },
+    {
+      "name": "@tabnas/multisource",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [
+        "multisource_not_found",
+        "multisource_cycle"
+      ],
+      "pluginKind": "modifier"
+    },
+    {
+      "name": "@tabnas/path",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "pluginKind": "modifier"
+    },
+    {
+      "name": "@tabnas/proto",
+      "extensions": [
+        ".proto"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/abnf",
+      "errorCodes": [],
+      "enabled": false,
+      "grammarKind": "compiled"
+    },
+    {
+      "name": "@tabnas/toml",
+      "extensions": [
+        ".toml"
+      ],
+      "mediaTypes": [
+        "application/toml"
+      ],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [],
+      "enabled": false,
+      "languageId": "toml",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/xml",
+      "extensions": [
+        ".xml"
+      ],
+      "mediaTypes": [
+        "application/xml",
+        "text/xml"
+      ],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [
+        "xml_mismatched_tag",
+        "xml_invalid_tag",
+        "unterminated_comment",
+        "unterminated_cdata",
+        "unterminated_pi",
+        "unterminated_doctype",
+        "comment_double_dash",
+        "cdata_terminator_in_text",
+        "pi_target_invalid",
+        "lt_in_attr_value",
+        "bad_entity_ref",
+        "duplicate_attribute",
+        "invalid_xml_char",
+        "reserved_namespace",
+        "unbound_prefix",
+        "invalid_namespace_uri",
+        "undeclared_entity",
+        "unparsed_entity_ref",
+        "external_entity_in_attr",
+        "text_at_top_level"
+      ],
+      "enabled": false,
+      "languageId": "xml",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/yaml",
+      "extensions": [
+        ".yaml",
+        ".yml"
+      ],
+      "mediaTypes": [
+        "application/yaml"
+      ],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [],
+      "enabled": false,
+      "languageId": "yaml",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close",
+        "sync"
+      ],
+      "lexStream": "clean"
+    },
+    {
+      "name": "@tabnas/zon",
+      "extensions": [
+        ".zon"
+      ],
+      "mediaTypes": [],
+      "base": "@tabnas/jsonic",
+      "errorCodes": [
+        "zon_number",
+        "zon_ident",
+        "zon_char",
+        "zon_doc_comment",
+        "zon_dup_field"
+      ],
+      "languageId": "zon",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end",
+        "comma",
+        "close"
+      ],
+      "lexStream": "clean"
+    }
+  ]
+}

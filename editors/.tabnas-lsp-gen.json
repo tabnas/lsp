@@ -1,0 +1,28 @@
+{
+ "generated": "tabnas-lsp-gen",
+ "files": [
+  "README.md",
+  "emacs/tabnas-lsp.el",
+  "helix/languages.toml",
+  "kate/lspclient-settings.json",
+  "nvim/tabnas.lua",
+  "sublime/LSP.sublime-settings",
+  "vscode/.vscodeignore",
+  "vscode/extension.js",
+  "vscode/language-configuration.json",
+  "vscode/package.json",
+  "zed/README.md",
+  "zed/extension.toml",
+  "zed/languages/abnf/config.toml",
+  "zed/languages/bnf/config.toml",
+  "zed/languages/csv/config.toml",
+  "zed/languages/ebnf/config.toml",
+  "zed/languages/feed/config.toml",
+  "zed/languages/gbnf/config.toml",
+  "zed/languages/json5/config.toml",
+  "zed/languages/jsonic/config.toml",
+  "zed/languages/jsonl/config.toml",
+  "zed/languages/pgn/config.toml",
+  "zed/languages/zon/config.toml"
+ ]
+}
