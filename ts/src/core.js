@@ -11,7 +11,7 @@
 // the Go const in go/lsp.go (go/version_test.go): the release
 // orchestrator rewrites all three together, and the tests are what
 // turn a missed rewrite into a failure instead of a silent drift.
-const VERSION = '0.1.0'
+const VERSION = '0.1.1'
 
 // Default engine-token -> LSP semantic-token-type map, sourced from
 // railroad's CANON key set (engine-standard tokens only; #ID is
