@@ -1,0 +1,89 @@
+# Target: tabnas/lsp -> .github/workflows/release.yml
+#
+# Publishes @tabnas/lsp to npm on a `ts/v*` tag push, via GitHub OIDC
+# Trusted Publishing (no token). Adapted from parser's release.yml — the
+# fleet's standard shape — and layout-compatible as written: lsp's
+# package also lives in `ts/`, and `npm run build --if-present` no-ops
+# because @tabnas/lsp declares no build script (it ships plain CommonJS).
+#
+# WITHOUT this file the release orchestrator cannot publish lsp at all,
+# and fails the whole wave rather than skipping: admin/publish.sh pushes
+# `go/v$NEW`, then `ts/v$NEW`, then waits on `wait_npm` for ten minutes
+# before `FAIL <repo>: npm did not report $NEW (check release.yml run)`
+# and `exit 1`. The tag lands, nothing publishes, and every repo after
+# lsp in ORDER is skipped. `lsp` sits at position 32 of 33, so `chess`
+# is the one left behind.
+#
+# BOOTSTRAP — necessary but NOT sufficient for the FIRST release.
+# Tokenless OIDC needs an npm trusted-publisher record, and `npm trust`
+# cannot create one for a package that does not exist yet:
+# rollout/setup-npm-trusted-publishing.sh skips unpublished packages by
+# design, exactly as it already does for c and css. @tabnas/lsp is 404
+# on the registry today, so a `ts/v*` tag pushed before the package
+# exists fails authentication in this job and strands the wave at
+# wait_npm — the very failure this file exists to prevent. The first
+# publish must therefore be made out of band (lsp's `make publish-ts`,
+# under a maintainer account with 2FA) and the trust record registered
+# immediately after, BEFORE the wave runs. See M8 in
+# notes/2026-08-17-unified-lsp-maintainer-actions.md, which sequences it.
+#
+# One quirk of this repo, measured rather than assumed. lsp/ts carries
+# `"@tabnas/parser": "file:../../parser/ts"` as a devDependency, and
+# that sibling does NOT exist in a standalone single-repo checkout. In
+# that situation `npm i` still EXITS 0 — it creates
+# node_modules/@tabnas/parser as a DANGLING SYMLINK — so this job is
+# safe as written only because it neither builds nor tests: the package
+# ships plain CommonJS, `npm run build --if-present` no-ops, and the
+# published tarball carries only bin/src/data/tools with the engine as
+# an open peer, so the dangling dev link never reaches a consumer.
+#
+# The consequence for anyone editing this file: do NOT add a build or
+# test step here expecting it to work. It would `require('@tabnas/
+# parser')` through that dead symlink and fail.
+#
+# What actually gates a release, stated precisely because it is easy to
+# assume more: admin/publish.sh step 3 verifies build+test LOCALLY
+# against published deps, in both runtimes, before tagging. It does NOT
+# require green CI before tagging — that check is deferred to the end of
+# the whole run ("CI is NOT waited on here", publish.sh step 4), because
+# blocking per repo made the wave hostage to the runner queue. The tag
+# push and the npm publish therefore happen BEFORE the cross-platform
+# matrix (macOS, Windows) is known, and npm versions are immutable: a
+# red deferred result is rolled forward with a fix, never retracted.
+# That is the reason no verification step belongs in this workflow —
+# not that CI already gated it.
+#
+# Actions are pinned to full commit SHAs with the corresponding release
+# as a trailing comment, on the lowest major whose `runs.using` is
+# node24 (ADR-16). The SHA is the pin; the comment is documentation and
+# is not what `rollout/apply-workflows.sh` compares.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'ts/v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Build and publish to npm (OIDC trusted publishing)
+        working-directory: ts
+        run: |
+          npm install -g npm@latest
+          npm i
+          npm run build --if-present
+          npm publish --access public
