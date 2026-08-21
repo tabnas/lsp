@@ -1,15 +1,14 @@
 # Target: tabnas/lsp -> .github/workflows/ci.yml
 #
-# Standalone rather than a polyglot-ci.yml caller, for two reasons the
-# reusable workflow cannot accommodate: @tabnas/lsp is flat (package.json
-# at the repo root, not under ts/), and it has no go/ tree and no build
-# step — it ships plain CommonJS.
+# Standalone rather than a polyglot-ci.yml caller: the repo follows the
+# ts/ + go/ fleet layout but the TS half ships plain CommonJS with no
+# build step, and the Go half needs a go.work over the sibling engine
+# checkout rather than a released module.
 #
-# It does need the engine, so the parser is cloned as a sibling and built,
-# matching the `file:../parser/ts` devDependency the promoted layout uses
-# (bootstrap step 3 in the staging README). That path is what makes CI
-# test against the engine at main rather than a published release — which
-# is the point, since this repo tracks unreleased engine contract work.
+# Both jobs clone the parser as a sibling and use it at main: the ts/
+# package's `file:../../parser/ts` devDependency and go/'s `make
+# test-go` go.work both resolve that layout. That is the point — this
+# repo tracks engine contract work that may be unreleased.
 #
 # Action refs use version tags for readability; Renovate
 # (helpers:pinGitHubActionDigests) pins them to commit SHAs automatically.
@@ -51,24 +50,35 @@ jobs:
 
       - name: Install
         shell: bash
-        working-directory: lsp
+        working-directory: lsp/ts
         run: npm i
 
+      # The suite includes the generator end-to-end tests, which RUN a
+      # generated Node server against a scripted LSP session and — when
+      # allowed — compile and run a generated Go server too. The Go
+      # case is explicitly suppressed here rather than left to a
+      # toolchain probe: hosted runner images ship SOME Go, so a probe
+      # would silently run it against an unpinned runner-image version.
+      # ci-go owns the Go coverage, pinned to 1.24.
       - name: Test
         shell: bash
-        working-directory: lsp
+        working-directory: lsp/ts
+        env:
+          TABNAS_LSP_GO_E2E: "0"
         run: npm test
 
       # The registry is generated from fleet descriptors, so a stale
-      # data/registry.json means the checked-in routing table no longer
-      # matches the descriptors it claims to derive from (ADR-10:
-      # derive, never duplicate). Regenerating needs the sibling repos,
-      # which CI does not clone, so this only asserts the file parses
-      # and is non-empty — the drift gate belongs with the fleet
-      # checkout the release job already has.
+      # ts/data/registry.json means the checked-in routing table no
+      # longer matches the descriptors it claims to derive from
+      # (ADR-10: derive, never duplicate). Regenerating needs the
+      # sibling repos, which CI does not clone, so this only asserts
+      # the file parses and is non-empty — the drift gate belongs with
+      # the fleet checkout the release job already has. The editors/
+      # staleness gate, by contrast, needs only this repo and runs in
+      # the suite (ts/test/geneditors.test.js).
       - name: Registry sanity
         shell: bash
-        working-directory: lsp
+        working-directory: lsp/ts
         run: >-
           node -e "const r=require('./data/registry.json');
           if(!Array.isArray(r.entries)||0===r.entries.length)
@@ -76,3 +86,61 @@ jobs:
           if(r.count!==r.entries.length)
           {throw new Error('registry.json count disagrees with entries')}
           console.log('registry ok: '+r.count+' entries')"
+
+  ci-go:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          path: lsp
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version: "1.24"
+          cache: false
+
+      # Node too: this job owns the generator's Go end-to-end case,
+      # which lives in the TypeScript suite (it generates a Go module,
+      # then `go mod tidy && go build`s and runs it). The node job
+      # suppresses that case so it cannot run against an unpinned
+      # runner-image Go — which left it running in NO job at all while
+      # still printing `ok`. Here it runs against the pinned 1.24.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: "24.x"
+
+      - name: Clone the engine
+        shell: bash
+        run: git clone --depth 1 https://github.com/tabnas/parser.git parser
+
+      # make go-work points the module at the sibling engine checkout
+      # (a committed replace would break `go install` consumers), then
+      # vets and runs the suite — including the cross-runtime
+      # conformance fixtures that keep this port honest against the
+      # canonical TS pipeline.
+      - name: Test
+        shell: bash
+        working-directory: lsp
+        run: |
+          make build-go
+          cd go && go vet ./... && go test ./...
+
+      # The generator's Go end-to-end case, against the pinned Go above.
+      # The engine must be built first: the generated Node/Go servers
+      # resolve @tabnas/parser through the `file:../../parser/ts`
+      # devDependency, exactly as the node job does.
+      - name: Build the engine
+        shell: bash
+        working-directory: parser/ts
+        run: npm i && npm run build
+
+      - name: Generator end-to-end (Go target)
+        shell: bash
+        working-directory: lsp/ts
+        run: |
+          npm i
+          node --test test/generate.test.js
