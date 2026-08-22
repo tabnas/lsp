@@ -66,8 +66,8 @@ make -C . test-go  # go.work over ../parser/go, then go test
 The TS package resolves the engine from the sibling checkout
 (`file:../../parser/ts` devDependency) — build the engine first:
 `cd ../parser/ts && npm i && npm run build`. The Go module's engine
-floor is a pseudo-version of parser main; `make go-work` (implied by
-`test-go`) points it at the sibling checkout. CI clones the parser as
+floor is the released `go/v0.9.0`; `make go-work` (implied by
+`test-go`) points it at the sibling checkout instead. CI clones the parser as
 a sibling for the same reason: this repo tracks engine work that may
 be unreleased.
 
@@ -106,23 +106,33 @@ fleet's `go/vX.Y.Z` tag convention. Three version sites move together
 `const VERSION` in `go/lsp.go` — with drift caught by
 `ts/test/version.test.js` and `go/version_test.go`.
 
-**The engine peer must be narrowed before the first publish.** The peer
-on `@tabnas/parser` is `">=0"`, the fleet convention (`admin/publish.sh`:
-every `@tabnas` peer is open BY DESIGN so installs resolve the latest
-published engine). It was `">=0.9.0"` and that was strictly worse — no
-such version has ever existed, so the tarball was uninstallable — but
-`">=0"` is not a floor either: this server needs the LSP engine contract
-(recovery, `ruleDone`, `continuations`; parser#94–#109), and the newest
-PUBLISHED engine predates it. An install therefore satisfies the peer
-and then degrades quietly, completion returning nothing.
+**The engine peer stays open, and that is the fix — not a gap in it.**
+The peer on `@tabnas/parser` is `">=0"`, the fleet convention
+(`admin/publish.sh`: every `@tabnas` peer is open BY DESIGN so installs
+resolve the latest published engine), and `ts/test/version.test.js`
+pins it there.
 
-Nothing in this repo can fix that, because the version to name does not
-exist yet. The release wave publishes the engine first (`lsp` sits after
-`parser` in `ORDER`), so the moment it does there IS a version to name:
-raise the peer to that engine release in the same wave, before or with
-the first `@tabnas/lsp` publish. Until then, treat lsp as unpublishable
-rather than publishable-with-a-caveat. Tracked as a prerequisite in the
-admin notes alongside the trusted-publishing bootstrap.
+This looked like a defect for a while, and the reasoning is worth
+recording because it was wrong twice in opposite directions. It was
+once `">=0.9.0"` when no such release existed, so the tarball was
+uninstallable (ETARGET) — a floor naming a version that does not exist
+is strictly worse than no floor. Correcting that to `">=0"` then
+attracted the opposite objection: an open range lets npm resolve an
+engine PREDATING the LSP contract (recovery, `ruleDone`,
+`continuations`; parser#94–#109), so an install would satisfy the peer
+and then degrade quietly, completion returning nothing.
+
+That objection described a real symptom but misplaced the cause. The
+range was never the problem — the problem was that no PUBLISHED engine
+carried the contract. An open range resolves the LATEST published
+engine, so the moment `@tabnas/parser@0.9.0` shipped, `">=0"` started
+resolving to an engine that satisfies the contract, and the symptom
+disappeared without touching this file. Narrowing the peer would now
+violate the fleet convention, fail the version test, and fix nothing.
+
+The real invariant: **lsp must not publish ahead of an engine release
+carrying the contract.** That is an ordering constraint (`parser`
+precedes `lsp` in `ORDER`), not a range constraint.
 
 ## Pull requests
 

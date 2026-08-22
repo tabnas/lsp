@@ -20,7 +20,7 @@ import (
 )
 
 // VERSION is this package's version.
-const VERSION = "0.1.1"
+const VERSION = "0.1.2"
 
 // Entry describes one served language: the Go mirror of a registry
 // entry (ts/src/registry.js). Generated servers construct these
