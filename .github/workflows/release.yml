@@ -101,17 +101,38 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Releasing $V"
 
-      # Fails closed: an existing tag means the version was not bumped.
-      # Skipped on the tag-push path, where the ts/v* tag necessarily
-      # exists already — it is what triggered the run.
-      - name: Refuse a version that is already tagged
+      # A dispatch is NOT inherently tied to the default branch — the ref
+      # is a parameter, so dispatching a version-bump feature branch would
+      # publish an immutable npm version and immutable tags from an
+      # unreviewed commit, bypassing the merged-main flow this header
+      # promises. Refuse anything but main.
+      - name: Refuse a dispatch from anywhere but main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::release must be dispatched from main (got ${{ github.ref }})"
+          exit 1
+
+      # Which tags this run still has to create. Fails closed only when
+      # there is NOTHING left to do, which is the real "you forgot to
+      # bump" signal; a run that has ts/v but is missing go/v is a
+      # half-finished release and must be repairable, not refused.
+      - name: Decide which tags this run must create
+        id: tags
         if: github.event_name == 'workflow_dispatch'
         run: |
           V="${{ steps.v.outputs.version }}"
-          if git rev-parse -q --verify "refs/tags/ts/v$V" >/dev/null; then
-            echo "::error::ts/v$V already exists — bump the version first"
+          MISSING=""
+          git rev-parse -q --verify "refs/tags/ts/v$V" >/dev/null || MISSING="$MISSING ts/v$V"
+          if [ "${{ inputs.go }}" = "true" ]; then
+            git rev-parse -q --verify "refs/tags/go/v$V" >/dev/null || MISSING="$MISSING go/v$V"
+          fi
+          MISSING="$(echo $MISSING)"
+          if [ -z "$MISSING" ]; then
+            echo "::error::every tag this run would create already exists — bump the version first"
             exit 1
           fi
+          echo "missing=$MISSING" >> "$GITHUB_OUTPUT"
+          echo "will create:$MISSING"
 
       # Fails OPEN, on purpose. The REGISTRY is the source of truth for
       # "is this released", not the tag: a run can publish and then fail
@@ -146,20 +167,20 @@ jobs:
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-          git tag "ts/v$V"
-          git push origin "ts/v$V"
-
           # The Go module has no registry upload step: proxy.golang.org
           # serves whatever the tag points at, so PUSHING THE TAG IS THE
           # RELEASE, and it cannot be undone — the proxy caches module
           # versions immutably. A go/vX.Y.Z that names the wrong commit
           # is permanent; bump to the next patch rather than trying to
           # move it.
-          if [ "${{ inputs.go }}" = "true" ]; then
-            if git rev-parse -q --verify "refs/tags/go/v$V" >/dev/null; then
-              echo "go/v$V already exists — leaving it alone"
-            else
-              git tag "go/v$V"
-              git push origin "go/v$V"
-            fi
-          fi
+          #
+          # ONE atomic transaction, not a push per tag. Pushed separately,
+          # ts/v could land and go/v fail on a transient error, leaving
+          # npm published, ts/v tagged and the Go module unreleased — and
+          # the guard above would then refuse every re-dispatch, so the
+          # half-release could never be repaired. --atomic makes it
+          # both-or-neither: neither is recoverable, both is done.
+          for T in ${{ steps.tags.outputs.missing }}; do
+            git tag "$T"
+          done
+          git push --atomic origin ${{ steps.tags.outputs.missing }}
