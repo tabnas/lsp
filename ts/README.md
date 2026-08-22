@@ -34,10 +34,13 @@ changes.
 ## Engine
 
 Requires a `@tabnas/parser` providing the LSP engine contract —
-recovery, `ruleDone` and `continuations`. The peer range is open by fleet
-convention, but the contract is newer than the current published engine;
-see `AGENTS.md` in the repository for the release constraint that
-applies before this package is published.
+recovery, `ruleDone` and `continuations` — which ships from **0.9.0**.
+
+The peer range is deliberately open (`>=0`), the fleet convention, so an
+install resolves the newest published engine. That is what satisfies the
+contract in practice: install this package and npm gives you 0.9.0 or
+later. Pinning an older engine by hand is the one way to get a resolution
+that installs cleanly and then cannot serve — completion returns nothing.
 
 ## Documentation
 
