@@ -241,12 +241,15 @@ Testing against unreleased siblings means symlinked `node_modules`,
   leaves `missing go.sum entry` — a *different* error on the commit meant to
   fix the first one. Revert both, and diff them against the last release
   commit.
-- **A `go.work` belongs outside every repo**, one level up. Be precise about
-  what it does and does not check: it still consults the `go.sum` files of
-  its member modules and writes any missing sums to `go.work.sum`. What it
-  skips is validating the *declared version* of a module it replaces with a
-  local one — which is exactly the part that hides a bad dependency bump,
-  and why the `GOWORK=off` run above exists.
+- **This repo keeps its workspace deliberately, and inside itself.** The
+  Makefile sets `GO_WORK := $(CURDIR)/go/go.work` and `make go-work` creates
+  it there, gitignored — so use `make test-go` rather than inventing a
+  workspace somewhere else, or manual commands will resolve a different
+  module set than CI does. What the workspace does *not* do is validate the
+  declared version of a module it replaces with a local one — it still
+  consults its members' `go.sum` files and writes missing sums to
+  `go.work.sum`. That one gap is the whole reason for the `GOWORK=off` run
+  above.
 - Scratch files — anything written to measure something.
 
 Stage deliberately (`git add <path>`) and read `git status --short` before
