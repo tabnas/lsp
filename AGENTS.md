@@ -154,11 +154,13 @@ The steps, in order:
    usually does not, so reproduce that before believing anything:
 
    ```bash
-   cd ts
-   # package-lock.json is TRACKED here — regenerate it, do not delete it
-   rm -rf node_modules
-   npm install
-   npm test
+   (
+     cd ts
+     # package-lock.json is TRACKED here — regenerate it, do not delete it
+     rm -rf node_modules
+     npm install
+     npm test
+   )
    ```
 
    **Removing the lockfile is not enough on its own.** It does not touch
@@ -177,9 +179,11 @@ The steps, in order:
    the sibling directory. Assert its absence first:
 
    ```bash
-   cd go
-   go mod edit -json | grep -q '"Replace": null' || { echo 'go.mod has a replace'; exit 1; }
-   GOWORK=off go test -count=1 ./...
+   (
+     cd go
+     go mod edit -json | grep -q '"Replace": null' || { echo 'go.mod has a replace'; exit 1; }
+     GOWORK=off go test -count=1 ./...
+   )
    ```
 
    `-count=1` because shared fixtures live outside the Go module, so a
@@ -197,19 +201,46 @@ The steps, in order:
    module tag is worse: proxy.golang.org caches module versions permanently,
    so a `go/vX.Y.Z` naming the wrong commit cannot be moved, only
    superseded.
-5. Dispatch `release.yml` on `main` with `go: true`.
+5. **Record the release commit, then dispatch.** The confirmation
+   below compares each tag against the commit you released, and a run
+   that publishes and then fails to tag can be followed by `main`
+   moving — so capture it *before* the dispatch, and read it from the
+   remote rather than a local ref that may be stale:
+
+   ```bash
+   REL=$(git ls-remote origin refs/heads/main | cut -f1)
+   ```
+
+   Then dispatch `release.yml` on `main` with `go: true`.
+
+   Keep that SHA. If a later run has to repair this release, the comparison
+   must still be against the commit npm actually served — re-reading `main`
+   at repair time gives you whatever it has become, which is exactly the
+   value the faulty anchor would also produce, so the check would agree with
+   itself and pass. If you no longer have it, recover it from the original
+   run: the `head_sha` of that `release.yml` run is the commit it published.
 6. Confirm — and make the check **fail**, not merely print:
 
    ```bash
    V=x.y.z
    npm view @tabnas/lsp@$V version
-   n=$(git ls-remote --tags origin "refs/tags/ts/v$V" "refs/tags/go/v$V" | wc -l)
-   [ "$n" = 2 ] || { echo "incomplete release: $n/2 tags"; exit 1; }
+   for T in "ts/v$V" "go/v$V"; do
+     S=$(git ls-remote origin "refs/tags/$T" | cut -f1)
+     [ -n "$S" ] || { echo "missing tag $T"; exit 1; }
+     [ "$S" = "$REL" ] || { echo "$T is $S, expected $REL"; exit 1; }
+   done
    ```
 
-   Neither `… | grep v$V` nor a bare `wc -l` is a check: `grep` exits 0 when
-   *either* ref matches, and `wc` prints the count and exits 0 regardless.
-   Both report a half-finished release as a finished one.
+   Counting the refs is not enough either. `grep v$V` exits 0 when *either*
+   ref matches; a bare `wc -l` prints the count and exits 0 regardless; and
+   even `[ "$n" = 2 ]` passes in the case this section warns about, because an
+   anchor fallback writes *both* tags on a commit npm never served — and two
+   wrong tags count as two. Comparing each tag against the commit you
+   released is what catches that.
+
+   The refs carry the commit directly: `release.yml` creates them with
+   `git tag "$T" "$ANCHOR"`, so they are lightweight and there is no `^{}`
+   to peel.
 
 ### When a dispatch dies half-way
 
