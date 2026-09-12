@@ -134,6 +134,137 @@ The real invariant: **lsp must not publish ahead of an engine release
 carrying the contract.** That is an ordering constraint (`parser`
 precedes `lsp` in `ORDER`), not a range constraint.
 
+### Dispatch it; do not push the tag
+
+**Run the workflow with `workflow_dispatch` on `main`, with the `go` input
+true.** That is the path the workflow's own header calls normal, and it is
+the only one an agent can take: **a session's credentials cannot push tag
+refs — `git push origin ts/v…` fails with HTTP 403**, while branch pushes
+from the same credentials succeed. It is a ref-type boundary, not a broken
+token or a network fault. Nothing is lost by never touching a tag, because
+the workflow creates both tags itself, in one atomic push, *after* npm
+accepts the publish. Pushing a tag by hand is the orchestrator's path
+(`admin/publish.sh`), not yours.
+
+The steps, in order:
+
+1. Bump the version sites named above, together.
+2. Verify against the **published** dependencies rather than your checkout.
+   The release runner installs fresh from the registry; a working tree
+   usually does not, so reproduce that before believing anything:
+
+   ```bash
+   cd ts
+   # package-lock.json is TRACKED here — regenerate it, do not delete it
+   rm -rf node_modules
+   npm install
+   npm test
+   ```
+
+   **Removing the lockfile is not enough on its own.** It does not touch
+   `node_modules`, and the sibling symlinks that make local development work
+   (`ts/node_modules/@tabnas/…` pointing at a checkout) survive it — the
+   suite then passes against unreleased code while appearing to verify the
+   published one. Reinstalling is the part that matters.
+
+   There is no `build` script here, and none is needed: this package is
+   plain CommonJS and the tests run the sources directly. `npm run build`
+   fails with `Missing script: "build"`.
+
+   On the Go side, `GOWORK=off` is necessary and **not sufficient** — it
+   disables the workspace and nothing else. A `replace` carrying no version
+   on the left applies to every version, so the `require` still resolves to
+   the sibling directory. Assert its absence first:
+
+   ```bash
+   cd go
+   go mod edit -json | grep -q '"Replace": null' || { echo 'go.mod has a replace'; exit 1; }
+   GOWORK=off go test -count=1 ./...
+   ```
+
+   `-count=1` because shared fixtures live outside the Go module, so a
+   changed corpus does not invalidate the test cache.
+3. **Merge the bump through a reviewed PR.** That is the house convention —
+   `CONTRIBUTING.md` squash-merges PRs and takes the title as the commit
+   message — and what `release.yml`'s own header describes. A direct push to
+   `main` is a recovery path, not the normal one: CI still gates it, but
+   nothing reviews it, and step 5 then publishes that unreviewed commit
+   immutably. If you take it, say so.
+4. **Wait for `main` CI to go green on the bump commit.** The release
+   workflow **has no test step** — it reads `main`, builds against
+   already-published dependencies, publishes and tags. `ci.yml` on the bump
+   commit is the only gate there is. An npm version is immutable, and a Go
+   module tag is worse: proxy.golang.org caches module versions permanently,
+   so a `go/vX.Y.Z` naming the wrong commit cannot be moved, only
+   superseded.
+5. Dispatch `release.yml` on `main` with `go: true`.
+6. Confirm — and make the check **fail**, not merely print:
+
+   ```bash
+   V=x.y.z
+   npm view @tabnas/lsp@$V version
+   n=$(git ls-remote --tags origin "refs/tags/ts/v$V" "refs/tags/go/v$V" | wc -l)
+   [ "$n" = 2 ] || { echo "incomplete release: $n/2 tags"; exit 1; }
+   ```
+
+   Neither `… | grep v$V` nor a bare `wc -l` is a check: `grep` exits 0 when
+   *either* ref matches, and `wc` prints the count and exits 0 regardless.
+   Both report a half-finished release as a finished one.
+
+### When a dispatch dies half-way
+
+The workflow fails closed on a dispatch from any ref but `main`, and when
+every tag it would create already exists (the "you forgot to bump" signal).
+It fails *open* on an already-published npm version, so a run that published
+and then died before tagging can be re-dispatched — **but only while `main`
+still points at the release commit.**
+
+That caveat is the sharp edge. The repair logic anchors new tags to an
+*existing* tag. If the run published to npm and died before the atomic push,
+neither tag exists to supply that anchor — so if `main` has moved on, the
+anchor falls back to the new `HEAD` while the publish step skips the version
+already on npm. Both tags then land on a commit that is not the one npm
+serves, and for the Go module that is permanent. In that state, recover the
+original SHA and tag it by hand, or bump to the next patch. Do not just
+re-dispatch.
+
+### Never commit the local wiring
+
+Testing against unreleased siblings means symlinked `node_modules`,
+`replace` directives and a workspace. None of it may reach a commit, and
+`git add -A` is how it does:
+
+- `go mod edit -replace …=/abs/path` — CI reports it as `replacement
+  directory /… does not exist`.
+- **`go.sum`, after the replace comes out.** A `replace` makes the sibling's
+  sums unused, so `go mod tidy` drops them; reverting `go.mod` alone then
+  leaves `missing go.sum entry` — a *different* error on the commit meant to
+  fix the first one. Revert both, and diff them against the last release
+  commit.
+- **This repo keeps its workspace deliberately, and inside itself.** The
+  Makefile sets `GO_WORK := $(CURDIR)/go/go.work` and `make go-work` creates
+  it there, gitignored — so use `make test-go` rather than inventing a
+  workspace somewhere else, or manual commands will resolve a different
+  module set than CI does. What the workspace does *not* do is validate the
+  declared version of a module it replaces with a local one — it still
+  consults its members' `go.sum` files and writes missing sums to
+  `go.work.sum`. That one gap is the whole reason for the `GOWORK=off` run
+  above.
+- Scratch files — anything written to measure something.
+
+Stage deliberately (`git add <path>`) and read `git status --short` before
+every commit. This bites hardest on a PR whose CI is *expected* red for a
+known dependency: a fresh breakage hides inside the expected failure.
+
+### `make publish-ts` is not the release path
+
+It predates `release.yml`. Read what it actually does before using it:
+
+- `publish-ts` runs a local `npm publish`, which goes out over a token and
+  bypasses the OIDC trusted publishing the workflow uses.
+
+It stays in the Makefile because removing it is a separate change.
+
 ## Pull requests
 
 Open pull requests **ready for review — never as drafts.** This is a
