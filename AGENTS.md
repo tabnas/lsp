@@ -154,11 +154,13 @@ The steps, in order:
    usually does not, so reproduce that before believing anything:
 
    ```bash
-   cd ts
-   # package-lock.json is TRACKED here — regenerate it, do not delete it
-   rm -rf node_modules
-   npm install
-   npm test
+   (
+     cd ts
+     # package-lock.json is TRACKED here — regenerate it, do not delete it
+     rm -rf node_modules
+     npm install
+     npm test
+   )
    ```
 
    **Removing the lockfile is not enough on its own.** It does not touch
@@ -177,9 +179,11 @@ The steps, in order:
    the sibling directory. Assert its absence first:
 
    ```bash
-   cd go
-   go mod edit -json | grep -q '"Replace": null' || { echo 'go.mod has a replace'; exit 1; }
-   GOWORK=off go test -count=1 ./...
+   (
+     cd go
+     go mod edit -json | grep -q '"Replace": null' || { echo 'go.mod has a replace'; exit 1; }
+     GOWORK=off go test -count=1 ./...
+   )
    ```
 
    `-count=1` because shared fixtures live outside the Go module, so a
