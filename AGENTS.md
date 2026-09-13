@@ -224,11 +224,14 @@ The steps, in order:
    ```bash
    V=x.y.z
    npm view @tabnas/lsp@$V version
+   GH=$(npm view @tabnas/lsp@$V gitHead)
+   [ -n "$GH" ] || { echo "npm records no gitHead for $V"; exit 1; }
    for T in "ts/v$V" "go/v$V"; do
      S=$(git ls-remote origin "refs/tags/$T" | cut -f1)
      [ -n "$S" ] || { echo "missing tag $T"; exit 1; }
-     [ "$S" = "$REL" ] || { echo "$T is $S, expected $REL"; exit 1; }
+     [ "$S" = "$GH" ] || { echo "$T is $S, but npm shipped $GH"; exit 1; }
    done
+   [ "$GH" = "$REL" ] || { echo "shipped $GH, not the $REL you cleared"; exit 1; }
    ```
 
    Counting the refs is not enough either. `grep v$V` exits 0 when *either*
@@ -242,19 +245,34 @@ The steps, in order:
    `git tag "$T" "$ANCHOR"`, so they are lightweight and there is no `^{}`
    to peel.
 
-   A mismatch has two causes, so read the dispatched run's `head_sha`
-   before concluding which. Equal to `$REL`: the run released the commit
-   you recorded and the *tag* is wrong — the anchor fallback above. Not
-   equal: `main` advanced between your capture and the run's checkout, so
-   the tag agrees with what shipped, but what shipped is not the commit
-   you cleared CI on. Both need looking at, which is why this check is
-   deliberately the conservative way round.
+   `$REL` is deliberately not what the tags are measured against. It is
+   your record of what you meant to release, and a repair can make the
+   tags agree with it while npm serves something else: publish from A,
+   lose the atomic tag push, re-capture `main` at B, and the repair tags
+   B — so a `$REL`-only loop passes while the registry still serves A.
+   `gitHead` is npm's own record of the commit the tarball was built from,
+   so that is what the tags are checked against, and `$REL` is checked
+   separately, as the CI question it actually is.
 
-   Do **not** make `head_sha` the thing you compare the tag against. It
-   is what recovers a lost `$REL`, never what the tag is measured against
-   — on a repair re-dispatch it is the *new* checkout, so a tag written
-   on that commit matches it while npm still serves the original, which
-   is the one case this check exists to catch.
+   When the script exits nonzero, the line that failed says what to do. A
+   tag that is not `$GH` is wrong, and the two are not equally
+   recoverable. A wrong `ts/v$V` simply moves: npm resolves from the
+   registry, so the tag is a signpost and nothing reads it. A wrong
+   `go/v$V` does not. `proxy.golang.org` caches a module version's content
+   immutably, so once anything has fetched `v$V` that content is what
+   consumers get for good, and a corrected tag only makes Git and the
+   proxy disagree — and you cannot find out whether it has been fetched
+   without causing it, because asking the proxy is itself a fetch. Leave
+   that tag where it is and release the next patch from the right commit,
+   carrying `retract v$V` in its `go/go.mod`: the cached content stays,
+   but `go get` stops selecting the bad version and reports it as
+   retracted.
+
+   The last line is a different failure. The tags are honest and `$REL` is
+   the stale capture — `main` moved before the run checked out — but what
+   shipped is then a commit you never cleared CI on, and `release.yml`
+   runs no tests of its own. Confirm `$GH` is green on `main` before
+   calling the release good.
 
 ### When a dispatch dies half-way
 
