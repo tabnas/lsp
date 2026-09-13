@@ -19,8 +19,8 @@ name: Docs
 on:
   push:
     paths:
-      - 'ts/**'
       - 'README.md'
+      - 'ts/README.md'
       - 'docs/STYLE-GUIDE.md'
       - 'ts/scripts/gated-docs.cjs'
       - '.vale.ini'
@@ -28,8 +28,8 @@ on:
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
-      - 'ts/**'
       - 'README.md'
+      - 'ts/README.md'
       - 'docs/STYLE-GUIDE.md'
       - 'ts/scripts/gated-docs.cjs'
       - '.vale.ini'
