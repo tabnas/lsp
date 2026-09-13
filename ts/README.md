@@ -2,9 +2,9 @@
 
 The tabnas language server and language-server generator.
 
-One LSP server serves **every** tabnas grammar — fleet plugins,
+One LSP server serves **every** tabnas grammar: fleet plugins,
 serialized `GrammarSpec` data, or BNF-dialect text added dynamically
-through workspace configuration — and the same machinery **generates**
+through workspace configuration, and the same machinery **generates**
 standalone single-language servers (Node packages or Go binaries) plus
 the editor plugins to use them, from one parser module or grammar.
 
@@ -33,14 +33,14 @@ changes.
 
 ## Engine
 
-Requires a `@tabnas/parser` providing the LSP engine contract —
-recovery, `ruleDone` and `continuations` — which ships from **0.9.0**.
+Requires a `@tabnas/parser` providing the LSP engine contract (recovery,
+`ruleDone` and `continuations`) which ships from **0.9.0**.
 
 The peer range is deliberately open (`>=0`), the fleet convention, so an
 install resolves the newest published engine. That is what satisfies the
 contract in practice: install this package and npm gives you 0.9.0 or
 later. Pinning an older engine by hand is the one way to get a resolution
-that installs cleanly and then cannot serve — completion returns nothing.
+that installs cleanly and then cannot serve: completion returns nothing.
 
 ## Documentation
 
