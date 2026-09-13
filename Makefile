@@ -98,4 +98,4 @@ gen-editors:
 # ts/test/docs.test.js reads. Requires `vale` on PATH and one
 # `vale sync`. Warnings are advisory, errors fail.
 prose:
-\tvale --minAlertLevel=error $$(node ts/scripts/gated-docs.cjs)
+	vale --minAlertLevel=error $$(node ts/scripts/gated-docs.cjs)
