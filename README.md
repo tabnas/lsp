@@ -2,9 +2,9 @@
 
 The tabnas language server and language-server generator.
 
-One LSP server serves **every** tabnas grammar — fleet plugins,
+One LSP server serves **every** tabnas grammar: fleet plugins,
 serialized `GrammarSpec` data, or BNF-dialect text added dynamically
-through workspace configuration — and the same machinery **generates**
+through workspace configuration, and the same machinery **generates**
 standalone single-language servers (Node packages or Go binaries) plus
 the editor plugins to use them, from one parser module or grammar.
 
@@ -18,13 +18,13 @@ npx --package=@tabnas/lsp tabnas-lsp-gen \
 ```
 
 (`--package` is required: this package ships two bins and neither is
-named `@tabnas/lsp`, so `npx @tabnas/lsp …` cannot select one — and a
+named `@tabnas/lsp`, so `npx @tabnas/lsp …` cannot select one, and a
 bare `npx tabnas-lsp-gen` would fetch whatever unrelated package holds
 that name on the registry.)
 
 Diagnostics (multi-error, via engine recovery), completion (engine
 continuations), semantic tokens (reconciled lex trace), and outline
-(post-process rule events) are derived from the grammar itself — no
+(post-process rule events) are derived from the grammar itself: no
 per-language feature code.
 
 | Where | What |

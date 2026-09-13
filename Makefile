@@ -92,3 +92,10 @@ gen-fixtures:
 # --unified output; ts/test/geneditors.test.js gates staleness.
 gen-editors:
 	cd ts && node bin/tabnas-lsp-gen.js --unified --out ../editors
+
+# The prose gate (see docs/STYLE-GUIDE.md). Vale over the reader-facing
+# pages, at the levels set in .vale.ini, on the same file list
+# ts/test/docs.test.js reads. Requires `vale` on PATH and one
+# `vale sync`. Warnings are advisory, errors fail.
+prose:
+	vale --minAlertLevel=error $$(node ts/scripts/gated-docs.cjs)
