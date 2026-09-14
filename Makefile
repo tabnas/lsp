@@ -8,7 +8,8 @@
 # `make go-work` (not committed; .gitignore'd).
 
 .PHONY: all build test clean build-ts build-go test-ts test-go \
-        clean-ts clean-go go-work gen-registry gen-fixtures publish-ts
+        clean-ts clean-go go-work gen-registry gen-fixtures publish-ts \
+        prose prose-counts
 
 all: build test
 
