@@ -47,6 +47,6 @@
     "@tabnas/parser": ">=0"
   },
   "devDependencies": {
-    "@tabnas/parser": "file:../../parser/ts"
+    "@tabnas/parser": "^0.11.1"
   }
 }
