@@ -23,4 +23,4 @@ go 1.24.7
 // Neither trap applies to a real tag. Local dev and CI still resolve the
 // sibling checkout via `make go-work` rather than a committed replace,
 // which would break `go install` consumers.
-require github.com/tabnas/parser/go v0.9.0
+require github.com/tabnas/parser/go v0.12.2

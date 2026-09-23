@@ -6,7 +6,7 @@
   "publisher": "REPLACE-WITH-YOUR-PUBLISHER",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages"
@@ -151,6 +151,6 @@
     }
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.0"
+    "vscode-languageclient": "^10.1.1"
   }
 }

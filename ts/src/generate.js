@@ -577,7 +577,7 @@ const EDITOR_EMITTERS = {
       version: '0.1.0',
       publisher: 'REPLACE-WITH-YOUR-PUBLISHER',
       license: 'MIT',
-      engines: { vscode: '^1.85.0' },
+      engines: { vscode: '^1.91.0' },
       categories: ['Programming Languages'],
       main: './extension.js',
       activationEvents: langs.map((l) => 'onLanguage:' + l.id),
@@ -599,7 +599,7 @@ const EDITOR_EMITTERS = {
           },
         },
       },
-      dependencies: { 'vscode-languageclient': '^9.0.0' },
+      dependencies: { 'vscode-languageclient': '^10.1.1' },
     }, null, 2) + '\n')
 
     files.set('vscode/extension.js', [
