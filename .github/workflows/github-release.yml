@@ -1,0 +1,78 @@
+# Target: tabnas/lsp -> .github/workflows/github-release.yml
+#
+# The GitHub Release for a TOOL (admin ADR-19): a notes-only Release. A
+# COMPONENT gets its Release from clib-release.yml instead, with its C
+# library attached.
+#
+# release.yml calls this workflow once its tag is on the remote, so every
+# publish also produces a Release. It has to be a CALL, not an event: a
+# Release or tag created with GITHUB_TOKEN starts no workflow run.
+#
+# Dispatch it by hand to repair a run whose Release step failed, or to
+# backfill a release cut before ADR-19; release.yml itself refuses a
+# re-dispatch once every tag exists. The notes are read from the TAGGED
+# source; the kind check reads the workflow's own ref, so a tag cut before
+# .tabnas-kind existed can still be backfilled. An existing Release is left
+# as it is.
+name: github-release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "release tag, e.g. go/v1.2.3"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "existing tag, e.g. go/v1.2.3 (ts/v1.2.3 where there is no Go module)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0   # every tag, to read the release tag's own files
+
+      # ADR-20: only a COMPONENT or a TOOL publishes. Read at the workflow's
+      # own ref (main on a dispatch, the release commit on a call), not at
+      # the tag, so a backfill of a pre-ADR-20 tag is not refused.
+      - name: Refuse unless this repository publishes (COMPONENT or TOOL)
+        run: |
+          K="$(tr -d '[:space:]' < .tabnas-kind 2>/dev/null || true)"
+          case "$K" in
+            COMPONENT|TOOL) echo "kind: $K" ;;
+            *) echo "::error::.tabnas-kind is '${K:-missing}', and only a COMPONENT or a TOOL publishes (admin ADR-20)"; exit 1 ;;
+          esac
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG exists"
+            exit 0
+          fi
+          git rev-parse -q --verify "refs/tags/$TAG^{commit}" >/dev/null \
+            || { echo "::error::no tag $TAG in this repository"; exit 1; }
+          V="${TAG#*/v}"
+          PKG="$(git show "$TAG:ts/package.json" | jq -r .name)"
+          NOTES="- npm: [\`$PKG@$V\`](https://www.npmjs.com/package/$PKG/v/$V)"
+          case "$TAG" in
+            go/v*) NOTES="$NOTES"$'\n'"- Go: \`$(git show "$TAG:go/go.mod" | sed -n 's/^module //p')@v$V\`" ;;
+          esac
+          # "Latest" only for the highest version on this tag line, so a
+          # backfill or late repair of an older tag does not displace it.
+          LATEST=true
+          [ "$(git tag -l "${TAG%%/v*}/v*" --sort=-version:refname | head -1)" = "$TAG" ] || LATEST=false
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+            --notes "$NOTES" --generate-notes --latest="$LATEST"
+          echo "created Release $TAG"

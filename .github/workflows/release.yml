@@ -54,6 +54,14 @@
 # require green CI first — that check is deferred to the end of its run
 # ("CI is NOT waited on here", publish.sh step 4).
 #
+# THE GITHUB RELEASE (ADR-19). Once the release tag is on the remote, the
+# github-release job calls github-release.yml, which creates a notes-only
+# GitHub Release on it: go/v<version>, or ts/v<version> where there is no
+# Go module. So a dispatch ships npm, the Go module and the Release
+# together. It is a reusable-workflow call because a Release created with
+# GITHUB_TOKEN starts no workflow run. A failed Release unpublishes
+# nothing; dispatch github-release.yml with the tag to finish it.
+#
 # Actions are pinned to full commit SHAs with the corresponding release
 # as a trailing comment, on the lowest major whose `runs.using` is
 # node24 (ADR-16). The SHA is the pin; the comment is documentation and
@@ -81,10 +89,23 @@ jobs:
     permissions:
       id-token: write   # OIDC -> npm
       contents: write   # GITHUB_TOKEN -> tags
+    outputs:
+      release-tag: ${{ steps.reltag.outputs.tag }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           fetch-depth: 0   # tags, for the already-released guard
+
+      # ADR-20: only a COMPONENT or a TOOL publishes. The repository's kind
+      # is committed in .tabnas-kind (COMPONENT, TOOL, CONTENT or ADMIN), so
+      # this workflow refuses to run in a repository that does not publish.
+      - name: Refuse unless this repository publishes (COMPONENT or TOOL)
+        run: |
+          K="$(tr -d '[:space:]' < .tabnas-kind 2>/dev/null || true)"
+          case "$K" in
+            COMPONENT|TOOL) echo "kind: $K" ;;
+            *) echo "::error::.tabnas-kind is '${K:-missing}', and only a COMPONENT or a TOOL publishes (admin ADR-20)"; exit 1 ;;
+          esac
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with:
@@ -207,3 +228,30 @@ jobs:
             git tag "$T" "${{ steps.tags.outputs.anchor }}"
           done
           git push --atomic origin ${{ steps.tags.outputs.missing }}
+
+      # ADR-19: hand the release tag to the github-release job. Read from
+      # the REMOTE, not from the step above: a push-path run tagged nothing
+      # itself.
+      - name: Hand the release tag to the GitHub Release
+        id: reltag
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          # go/v wherever there is a Go module, never ts/v: otherwise a
+          # go: false dispatch and its go: true repair would leave two
+          # Releases for one version.
+          if [ -f go/go.mod ]; then T="go/v$V"; else T="ts/v$V"; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$T" >/dev/null; then
+            echo "tag=$T" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$T is not on the remote — no GitHub Release this run; dispatch github-release.yml with it once it is"
+          fi
+
+  # The GitHub Release (ADR-19; see the header).
+  github-release:
+    needs: publish-npm
+    if: ${{ needs.publish-npm.outputs.release-tag != '' }}
+    permissions:
+      contents: write   # GITHUB_TOKEN -> the Release
+    uses: ./.github/workflows/github-release.yml
+    with:
+      tag: ${{ needs.publish-npm.outputs.release-tag }}
