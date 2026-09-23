@@ -274,6 +274,16 @@ The steps, in order:
    runs no tests of its own. Confirm `$GH` is green on `main` before
    calling the release good.
 
+   **The dispatch also creates the GitHub Release (admin ADR-19).** Once
+   the tags are on the remote, `release.yml` calls
+   `.github/workflows/github-release.yml`, which creates a notes-only
+   Release on `go/v$V` (on `ts/v$V` where there is no Go module). The release
+   is done when that Release is published. If the `github-release` job
+   failed after npm and Go had shipped, fix the cause, then dispatch
+   `github-release.yml` on `main` with the tag: it creates the Release if it
+   is missing and leaves an existing one alone. `release.yml` itself cannot
+   do this, because it refuses a re-dispatch once every tag exists.
+
 ### When a dispatch dies half-way
 
 The workflow fails closed on a dispatch from any ref but `main`, and when
