@@ -9,15 +9,9 @@ This directory exists because session credentials cannot write
 2. A maintainer promotes it with the admin `rollout/apply-ci-folders.sh`
    script.
 
-## Pending
+## Promoted, 2026-09-22
 
-- **`workflows/docs.yml`** — the prose gate: Vale over the reader-facing
-  pages at the levels set in `.vale.ini`, on the file list
-  `ts/scripts/gated-docs.cjs` produces. See `docs/STYLE-GUIDE.md`.
-
-  It needs no sibling checkouts and no secrets, and pins its own Vale
-  version. Errors fail the job; warnings go to the run summary as a
-  report. `make prose` runs the identical check locally, and the test
-  suite already runs the other half of the gate
-  (`ts/test/docs.test.js`), so promoting this adds the spelling and
-  Google-convention arm rather than the whole gate.
+The one file that was staged here is now live, moved by the rollout
+script rather than edited: `workflows/docs.yml` is
+`.github/workflows/docs.yml`. Nothing is pending, and nothing else lives
+here. Read the workflow itself rather than a description of it here.
