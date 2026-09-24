@@ -44,7 +44,7 @@ that installs cleanly and then cannot serve: completion returns nothing.
 
 ## Documentation
 
-Full design, the dynamism ladder, the generator matrix and the security
+Full design, the dynamism ladder, the generator matrix, and the security
 model are in [`doc/design.md`](https://github.com/tabnas/lsp/blob/main/doc/design.md).
 Contributor and agent guidance is in
 [`AGENTS.md`](https://github.com/tabnas/lsp/blob/main/AGENTS.md).
