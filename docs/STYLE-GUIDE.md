@@ -99,11 +99,14 @@ tutorial, used in a guide, specified in the reference, argued in the
 explanation) but the normative statement lives in the reference and
 everything else links to it.
 
-**The two runtimes carry the same set.** A page present under `ts/doc/`
-and missing under `go/doc/` is a gap. `gated-docs.cjs` names each page,
-and throws when a named page is not on disk, so a page renamed or
-deleted fails the gate rather than leaving it. A page only one port has
-is a deliberate exception and says so in its own opening lines.
+**This repository documents its runtimes in READMEs.** It has two
+runtimes, TypeScript and Go, and neither has a `doc/` directory: the
+gated set is the repository README, which routes to both ports, and
+`ts/README.md`. `gated-docs.cjs` names each page, and throws when a
+named page is not on disk, so a page renamed or deleted fails the gate
+rather than leaving it. If `ts/doc/` and `go/doc/` pages are added,
+the two runtimes carry the same set, and a page only one port has is a
+deliberate exception that says so in its own opening lines.
 
 ## The published set cites nothing internal
 
@@ -162,9 +165,10 @@ phrases. Ten habits, with the register they apply in:
 7. **Talk to the reader as "you", and route them** ("If you already know
    ABNF, skip to the reference"). "We" appears only in tutorials, walking
    through code together. "I" appears nowhere.
-8. **Show that the code is real.** Every fenced example carrying a `// =>`
-   assertion is executed by a test; when a page says the output is the
-   engine's, that is what it means.
+8. **Show that the code is real.** A fenced example carrying a `// =>`
+   assertion has to be executed by a test. No gated page here carries
+   one yet, so there is no doc-example harness (see "Code snippets");
+   when a page says the output is the engine's, that is what it means.
 9. **Jokes are self-directed or about the industry's mundanity, and the
    register goes fully serious the moment correctness or safety is on the
    table.** Never joke about the reader, other tools, or an error's
