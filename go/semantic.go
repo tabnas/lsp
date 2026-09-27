@@ -147,18 +147,26 @@ func SemanticTokensOf(events []tokenPoint, entry *Entry, doc *Doc) *SemanticToke
 		if !ok {
 			continue
 		}
-		pos := doc.PosFromEngine(t.RI, t.CI)
+		// The column is measured from the text right before the token,
+		// as the TS core's cI-1 is, rather than from the start of its
+		// line: the engine restarts CI at a lone '\r' without starting
+		// a row (see utf16ColumnBefore).
+		line := t.RI - 1
+		if line < 0 {
+			line = 0
+		}
+		col := doc.utf16ColumnBefore(t.SI, t.CI)
 		if strings.Contains(t.Src, "\n") {
 			for i, part := range strings.Split(t.Src, "\n") {
 				seg := strings.TrimSuffix(part, "\r")
 				char := 0
 				if 0 == i {
-					char = pos.Character
+					char = col
 				}
-				emit(pos.Line+i, char, UTF16Len(seg), typeI)
+				emit(line+i, char, UTF16Len(seg), typeI)
 			}
 		} else {
-			emit(pos.Line, pos.Character, srcLenUTF16(t.Src), typeI)
+			emit(line, col, srcLenUTF16(t.Src), typeI)
 		}
 	}
 	return &SemanticTokens{Data: data, Legend: Legend}

@@ -121,6 +121,28 @@ func (d *Doc) PosFromEngine(row, col int) Position {
 	return Position{Line: line, Character: ch}
 }
 
+// utf16ColumnBefore is the LSP character of a token at byte offset si
+// with engine column col (1-based, in runes): the UTF-16 length of the
+// col-1 runes immediately before si. The engine's column counts runes
+// since its last reset, and a lone '\r' resets it WITHOUT starting a
+// row, so the canonical column (the TS core's cI-1, UTF-16 units since
+// the same reset) is a property of the text right before the token, not
+// of the '\n'-delimited line it sits on. PosFromEngine measures the line
+// from its start and differs after a lone CR whenever an astral rune sits
+// in the wrong window; semantic tokens measure this way instead.
+func (d *Doc) utf16ColumnBefore(si, col int) int {
+	if si > len(d.Text) {
+		si = len(d.Text)
+	}
+	units := 0
+	for n := col - 1; 0 < n && 0 < si; n-- {
+		r, size := utf8.DecodeLastRuneInString(d.Text[:si])
+		si -= size
+		units += utf16Units(r)
+	}
+	return units
+}
+
 // byteOffsetOfEngine returns the byte offset of an engine (row, col).
 func (d *Doc) byteOffsetOfEngine(row, col int) int {
 	line := row - 1

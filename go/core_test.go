@@ -219,6 +219,32 @@ func TestAstralRangeConversion(t *testing.T) {
 	}
 }
 
+func TestLoneCRColumnIsMeasuredBeforeTheToken(t *testing.T) {
+	// A lone '\r' restarts the engine column on the same row. The
+	// canonical column counts UTF-16 units from that restart, so it is
+	// measured from the text right before the token: after
+	// "{\"😀\":1,\r" the ':' at engine column 12 is 11 units in (the
+	// key before it), not the 12 a walk from the line start counts.
+	d := doc("{\"😀\":1,\r\"bbbbbbbbb\":2}")
+	if c := d.utf16ColumnBefore(22, 12); 11 != c {
+		t.Fatalf("column after a lone CR: got %d, want 11", c)
+	}
+	// Without a reset the two measures agree: the astral key is two
+	// units, so the ':' at engine column 5 is 5 units in.
+	c, p := d.utf16ColumnBefore(7, 5), d.PosFromEngine(1, 5)
+	if 5 != c || c != p.Character {
+		t.Fatalf("column without a reset: got %d and %d, want 5", c, p.Character)
+	}
+	// Past the text, or asking for more runes than precede the token,
+	// measures what is there.
+	if c := d.utf16ColumnBefore(99, 3); 2 != c {
+		t.Fatalf("column past the text: got %d, want 2", c)
+	}
+	if c := d.utf16ColumnBefore(1, 99); 1 != c {
+		t.Fatalf("column asking past the start: got %d, want 1", c)
+	}
+}
+
 func TestMultilineTokensSplitPerLine(t *testing.T) {
 	// Mirrors the TS case "multiline tokens split into line-local
 	// spans": a block comment spanning lines must not emit one token
