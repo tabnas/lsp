@@ -87,16 +87,47 @@ fi
 # leaving the committed lock stale -- cargo then regenerates it in the
 # runner and everything goes green.
 #
-# So the whole resolution is compared, before and after cargo runs, with one
-# exemption: the engine's recorded version. That entry legitimately moves
-# whenever the sibling checkout does, and exempting exactly it is what makes
-# a full comparison usable here when blanket `--locked` is not.
-lock_without_engine_version() {
-  awk '
-    /^\[\[package\]\]$/  { eng = 0 }
-    /^name = "tabnas"$/  { eng = 1 }
-    eng && /^version = / { print "version = \"<engine>\""; next }
-                         { print }
+# So the resolution is compared before and after cargo runs -- but only the
+# part this crate's own manifest decides. The engine is resolved from a
+# sibling checkout of MAIN, and whenever that checkout adds, removes or
+# re-pins one of ITS dependencies, cargo legitimately rewrites the engine's
+# stanza and the transitive stanzas beneath it. A comparison of the whole
+# lock would then fail every pull request here, Rust or not, until someone
+# re-committed rs/Cargo.lock for another repository's change. What is
+# compared is therefore the header, this crate's own stanza (its dependency
+# list) and the stanzas of its DIRECT dependencies (their versions and
+# sources), with the engine's version and dependency list masked: exactly
+# the lines a change to rs/Cargo.toml moves, and none the sibling moves.
+# A shared dependency the engine drags to another version still shows,
+# because that is this crate's own resolution changing too.
+DIRECT=$(awk '
+  /^\[/ { section = $0 }
+  section ~ /dependencies/ && /^[A-Za-z0-9_-]+[ \t]*=/ {
+    split($0, parts, "="); gsub(/[ \t]/, "", parts[1]); print parts[1]
+  }
+' Cargo.toml | sort -u | tr '\n' ' ')
+
+lock_local_view() {
+  awk -v crate="$CRATE" -v direct="$DIRECT" '
+    BEGIN {
+      n = split(direct, names, " ")
+      for (i = 1; i <= n; i++) keep[names[i]] = 1
+      keep[crate] = 1
+      keepit = 1            # the header before the first stanza
+    }
+    /^\[\[package\]\]$/ { name = ""; keepit = 0; indeps = 0; hold = $0; held = 1; next }
+    held && /^name = / {
+      name = $0; sub(/^name = "/, "", name); sub(/"$/, "", name)
+      keepit = (name in keep)
+      held = 0
+      if (keepit) { print hold; print }
+      next
+    }
+    !keepit { next }
+    name == "tabnas" && /^version = / { print "version = \"<engine>\""; next }
+    name == "tabnas" && /^dependencies = \[/ { indeps = 1; print "dependencies = [<engine>]"; next }
+    name == "tabnas" && indeps { if ($0 ~ /^\]/) indeps = 0; next }
+    { print }
   ' "$1"
 }
 
@@ -119,29 +150,53 @@ trap 'if [ -f "$LOCK_BEFORE" ] && ! cmp -s "$LOCK_BEFORE" Cargo.lock; then cp "$
 # dependency, so `--all` reaches into the sibling parser checkout: an
 # unformatted file over there fails this gate even when every file here
 # is clean.
-"${CARGO[@]}" fmt --check
-"${CARGO[@]}" build --all-targets
-"${CARGO[@]}" test --all-targets
+# Every phase below is a transient task, and AGENTS.md wants a line from
+# one at least every 30 seconds: a cold runner can spend longer than that
+# inside one cargo phase compiling a single target with nothing printed,
+# and silence reads as a hang. `phase` names the step, runs it, and keeps a
+# heartbeat beside it until it ends; the phase's own output still flows.
+phase() {
+  local label=$1
+  shift
+  echo "gate: $label"
+  (
+    elapsed=0
+    while sleep 30; do
+      elapsed=$((elapsed + 30))
+      echo "gate: $label ... still running (${elapsed}s)"
+    done
+  ) &
+  local heartbeat=$!
+  local rc=0
+  "$@" || rc=$?
+  kill "$heartbeat" 2>/dev/null || true
+  wait "$heartbeat" 2>/dev/null || true
+  return "$rc"
+}
+
+phase fmt "${CARGO[@]}" fmt --check
+phase build "${CARGO[@]}" build --all-targets
+phase test "${CARGO[@]}" test --all-targets
 # `--all-targets` does NOT include doctests -- cargo documents the selector
 # as "Test all targets (does not include doctests)" -- so a broken example
 # in the crate docs (the README's fences run as doctests) passes a gate
 # that only runs it.
-"${CARGO[@]}" test --doc
-"${CARGO[@]}" clippy --all-targets --all-features -- -D warnings
+phase "doc tests" "${CARGO[@]}" test --doc
+phase clippy "${CARGO[@]}" clippy --all-targets --all-features -- -D warnings
 
 # A broken or ambiguous intra-doc link is a rustdoc WARNING, and no arm
 # above runs rustdoc over the crate docs. `-D warnings` through
 # RUSTDOCFLAGS turns that into a failure; `--no-deps` keeps it about this
 # crate rather than the engine.
-RUSTDOCFLAGS="-D warnings" "${CARGO[@]}" doc --no-deps
+phase rustdoc env RUSTDOCFLAGS="-D warnings" "${CARGO[@]}" doc --no-deps
 
 # Now that cargo has had every chance to rewrite it, the lock must still
 # describe the same resolution it did when committed.
-if ! diff -q <(lock_without_engine_version "$LOCK_BEFORE") \
-             <(lock_without_engine_version Cargo.lock) >/dev/null; then
+if ! diff -q <(lock_local_view "$LOCK_BEFORE") \
+             <(lock_local_view Cargo.lock) >/dev/null; then
   echo "rs/Cargo.lock does not match rs/Cargo.toml -- cargo rewrote it:" >&2
-  diff <(lock_without_engine_version "$LOCK_BEFORE") \
-       <(lock_without_engine_version Cargo.lock) >&2 || true
+  diff <(lock_local_view "$LOCK_BEFORE") \
+       <(lock_local_view Cargo.lock) >&2 || true
   echo >&2
   echo "run a cargo command and commit the updated rs/Cargo.lock" >&2
   exit 1
