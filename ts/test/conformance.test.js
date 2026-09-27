@@ -2,9 +2,9 @@
 'use strict'
 
 // The cross-runtime conformance suite (design §13): the same fixtures
-// go/conformance_test.go runs, against the shared pure-data grammar.
-// TS is canonical — when this file and the Go runner disagree, the Go
-// port changes.
+// go/conformance_test.go and rs/tests/conformance_test.rs run, against
+// the shared pure-data grammar. TS is canonical — when this file and a
+// port's runner disagree, the port changes.
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert')
@@ -43,6 +43,20 @@ function outlineNames(list) {
   }))
 }
 
+// The fixture's `tokens` rows are the `data` decoded through the legend;
+// decoding here keeps the two forms of each case honest with each other.
+function decodeTokens(data) {
+  const rows = []
+  let line = 0
+  let char = 0
+  for (let i = 0; i < data.length; i += 5) {
+    line += data[i]
+    char = 0 === data[i] ? char + data[i + 1] : data[i + 1]
+    rows.push([line, char, data[i + 2], core.LEGEND[data[i + 3]]])
+  }
+  return rows
+}
+
 describe('lsp-conformance', () => {
   for (const c of SUITE.analyze) {
     it('analyze: ' + c.name, () => {
@@ -61,6 +75,17 @@ describe('lsp-conformance', () => {
       const doc = new Doc('file:///t.jsonf', 'jsonf', 1, c.input)
       const items = core.completion(inst, ENTRY, doc, c.position)
       assert.deepStrictEqual(items.map((i) => i.label).sort(), c.labels)
+    })
+  }
+
+  for (const c of SUITE.semantic) {
+    it('semantic: ' + c.name, () => {
+      const entry = Object.assign({}, ENTRY, { semanticTokens: c.overrides || {} })
+      const doc = new Doc('file:///t.jsonf', 'jsonf', 1, c.input)
+      const a = core.analyze(instances, inst, entry, doc)
+      assert.equal(a.errors.length, c.errors)
+      assert.deepStrictEqual(a.semanticTokens.data, c.data)
+      assert.deepStrictEqual(decodeTokens(c.data), c.tokens)
     })
   }
 })

@@ -1,23 +1,25 @@
-# Build and test both halves of the language server: the TypeScript
-# package (ts/, canonical) and the Go module (go/, mirrors it by
-# fixture parity). The TS side ships plain CommonJS — there is no
-# build step; `build` exists for fleet-uniform target names.
+# Build and test the language server's runtimes: the TypeScript
+# package (ts/, canonical), the Go module (go/, mirrors it by fixture
+# parity) and the Rust crate (rs/, the semantic-token half of the
+# pipeline, mirrored the same way). The TS side ships plain CommonJS —
+# there is no build step; `build` exists for fleet-uniform target names.
 #
 # Local test resolves the engine from the sibling checkout: ts/ via
 # the file:../../parser/ts devDependency, go/ via a go.work created by
-# `make go-work` (not committed; .gitignore'd).
+# `make go-work` (not committed; .gitignore'd), rs/ via the
+# `path = "../../parser/rs"` dependency in rs/Cargo.toml.
 
-.PHONY: all build test clean build-ts build-go test-ts test-go \
-        clean-ts clean-go go-work gen-registry gen-fixtures publish-ts \
+.PHONY: all build test clean build-ts build-go build-rs test-ts test-go test-rs \
+        clean-ts clean-go clean-rs go-work gen-registry gen-fixtures publish-ts \
         prose prose-counts
 
 all: build test
 
-build: build-ts build-go
+build: build-ts build-go build-rs
 
-test: test-ts test-go
+test: test-ts test-go test-rs
 
-clean: clean-ts clean-go
+clean: clean-ts clean-go clean-rs
 
 # --- TypeScript (package in ts/) ---
 build-ts:
@@ -77,6 +79,19 @@ test-go: go-work
 
 clean-go:
 	cd go && GOWORK=off go clean && rm -f go.work go.work.sum
+
+# --- Rust (crate in rs/) ---
+# The fast inner loop. ci/rust/run.sh is the full gate (fmt, doctests,
+# clippy, the lock check, through the MSRV toolchain) and is what CI runs.
+build-rs:
+	cd rs && cargo build --all-targets
+
+test-rs:
+	cd rs && cargo test --all-targets
+	cd rs && cargo clippy --all-targets --all-features -- -D warnings
+
+clean-rs:
+	cd rs && cargo clean
 
 # --- Generated data (ts/data/*.json) ---
 # Both generators walk the fleet checkout (sibling repos of this one)

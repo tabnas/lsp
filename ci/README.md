@@ -1,8 +1,12 @@
 # ci/
 
-No CI scripts live here today. The workflows under `.github/workflows/`
-carry their own steps: `ci.yml` builds and tests both runtimes against a
-sibling parser checkout, and `docs.yml` runs the prose gate
+One CI script lives here: `rust/run.sh`, the Rust gate, which the
+`ci-rust` job in `ci.yml` runs and which you can run locally against a
+sibling parser checkout (it formats, builds, tests, runs the doctests
+and clippy, and checks `rs/Cargo.lock`, all through the MSRV toolchain).
+The other workflows under `.github/workflows/` carry their own steps:
+`ci.yml` builds and tests the TypeScript and Go runtimes against the
+same sibling parser checkout, and `docs.yml` runs the prose gate
 (`make prose` runs the same check locally).
 
 To change CI, edit `.github/workflows/` in a reviewed pull request.

@@ -311,7 +311,7 @@ One debounced parse per change; every artifact from that single pass:
 |---|---|
 | Diagnostics | `errors[]` (recovery) → structured diagnostic → LSP `Diagnostic`; `codeDescription.href` → tabnas.dev error registry; `len` is code points and is converted through the document text (§9) |
 | Completion | `continuations()` — sentinels (`#ZZ`, `#AA`, `#BD`) filtered; fixed-token source as label |
-| Semantic tokens | reconciled lex trace (newest-per-position + span shadowing) → CANON default map + prefix conventions (`KW_*`→keyword, …) + per-entry overrides; fixed superset legend so hot-adds never re-register; served only for `lexStream: clean` entries |
+| Semantic tokens | reconciled lex trace (newest-per-position + span shadowing) → CANON default map + prefix conventions (`KW_*`→keyword, …) + per-entry overrides; fixed superset legend so hot-adds never re-register; served only for `lexStream: clean` entries. This derivation alone also exists in Rust (`rs/`, crate `tabnas-lsp`, fixture-mirrored like the Go port) for Rust hosts that highlight text |
 | Outline | `ruleDone` events (incl. `forced` closes) → rule-name filter → span-nested `DocumentSymbol`s |
 | Hover | token under cursor + descriptions (tracked; degrade to nothing) |
 | Cross-file | multisource `documentLink` (workspace-sandboxed, off by default; tracked) |
