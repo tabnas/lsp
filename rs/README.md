@@ -42,7 +42,8 @@ at build time) says which grammars serve semantic tokens at all
 
 Build a parser for the grammar, then hand it to `highlight`, which
 installs the recorder, parses with whatever recovery the parser's
-options enable, and returns the byte spans to colour:
+options enable, and returns the byte spans to colour. The parser is
+consumed: one instance, one parse.
 
 ```rust
 use tabnas::{Options, Tabnas};
@@ -60,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     parser.grammar_json(&spec)?;
 
     let text = r#"{"a":[1,2],"b":true}"#;
-    let result = highlight(&mut parser, text, None);
+    let result = highlight(parser, text, None);
     assert!(result.errors.is_empty());
     assert!(!result.partial);
 
@@ -83,9 +84,12 @@ off, the spans cover the text up to the failure and `partial` is true.
 `errors` carries the engine's errors either way.
 
 The engine has no unsubscribe API, so the recorder `highlight` installs
-stays on the parser. Use a fresh instance per parse, as `aless` does, or
-keep one `Highlighter`, which installs the recorder once and drains it
-between parses:
+stays on the parser, and every parse fills every recorder ever installed
+on it; that is why `highlight` takes the instance by value rather than
+letting a second call stack a second recorder. To parse repeatedly with
+one instance (a viewer reloading a file, a server re-analysing a
+document), keep one `Highlighter`, which installs the recorder once and
+drains it between parses:
 
 ```rust
 use tabnas::Tabnas;

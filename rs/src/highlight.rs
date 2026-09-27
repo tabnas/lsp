@@ -9,11 +9,13 @@
 //! says when that was short of the end of the text.
 //!
 //! The engine has no unsubscribe API, so a recorder installed on a
-//! parser stays installed for that parser's lifetime. [`highlight`]
-//! installs one per call and is meant for a fresh parser instance per
-//! parse (as `aless` builds one per document); a [`Highlighter`] owns
-//! the parser and installs the recorder once, for hosts that keep an
-//! instance and parse repeatedly.
+//! parser stays installed for that parser's lifetime, and every parse
+//! fills every recorder ever installed. [`highlight`] therefore takes
+//! the parser by value: it installs one recorder, parses once and
+//! consumes the instance, so a second recorder on the same parser cannot
+//! be written. A host that keeps an instance and parses repeatedly uses
+//! a [`Highlighter`], which owns the parser and installs the recorder
+//! once.
 
 use tabnas::{ParseRecovery, Tabnas, TabnasError};
 
@@ -57,14 +59,17 @@ pub struct Highlight {
 /// Parse `text` with `parser`, recording the lex trace, and return the
 /// spans to colour.
 ///
-/// The recorder this installs stays on `parser` (the engine has no
-/// unsubscribe), so use a fresh instance per call, or a [`Highlighter`]
-/// to reuse one. `overrides` is the registry entry's `semanticTokens`
-/// map, `None` for the defaults alone.
-pub fn highlight(parser: &mut Tabnas, text: &str, overrides: Option<&Overrides>) -> Highlight {
-    let trace = LexTrace::install(parser);
-    let recovery = parser.parse_recover(text);
-    build(trace.take(), recovery, overrides, text)
+/// The parser is consumed. The recorder this installs stays on it (the
+/// engine has no unsubscribe), and an instance highlighted twice this
+/// way would carry two recorders, both filled by every later parse: the
+/// results would stay right while memory and time grew with every call.
+/// Taking the instance by value makes that impossible to write; to parse
+/// repeatedly with one instance, use a [`Highlighter`]. `overrides` is
+/// the registry entry's `semanticTokens` map, `None` for the defaults
+/// alone.
+pub fn highlight(mut parser: Tabnas, text: &str, overrides: Option<&Overrides>) -> Highlight {
+    let trace = LexTrace::install(&mut parser);
+    run(&mut parser, &trace, text, overrides)
 }
 
 /// A parser with the lex-trace recorder installed once, for repeated
@@ -95,9 +100,7 @@ impl Highlighter {
     /// Parse `text` and return the spans to colour. One parse at a time:
     /// the recorder is cleared before the parse and drained after it.
     pub fn highlight(&mut self, text: &str) -> Highlight {
-        self.trace.clear();
-        let recovery = self.parser.parse_recover(text);
-        build(self.trace.take(), recovery, self.overrides.as_ref(), text)
+        run(&mut self.parser, &self.trace, text, self.overrides.as_ref())
     }
 
     /// The parser this highlights with.
@@ -122,6 +125,19 @@ impl Highlighter {
     }
 }
 
+/// One parse through an installed recorder: cleared before, drained
+/// after, so no parse sees another's events.
+fn run(
+    parser: &mut Tabnas,
+    trace: &LexTrace,
+    text: &str,
+    overrides: Option<&Overrides>,
+) -> Highlight {
+    trace.clear();
+    let recovery = parser.parse_recover(text);
+    build(trace.take(), recovery, overrides, text)
+}
+
 fn build(
     events: Vec<TokenPoint>,
     recovery: ParseRecovery,
@@ -134,7 +150,7 @@ fn build(
     let reached_end = text.is_empty()
         || events
             .iter()
-            .any(|event| event.si + event.len >= text.len());
+            .any(|event| event.si.saturating_add(event.len) >= text.len());
     let partial = recovery.fatal.is_some() || !reached_end;
     let reconciled = reconcile(&events);
     let segments = segments(&reconciled, overrides, text);

@@ -97,8 +97,7 @@ fn the_semantic_section_matches_the_canonical_pipeline() {
 fn the_convenience_path_agrees_with_the_pipeline() {
     let suite = suite();
     for case in &suite.semantic {
-        let mut parser = instance();
-        let result = highlight(&mut parser, &case.input, case.overrides.as_ref());
+        let result = highlight(instance(), &case.input, case.overrides.as_ref());
         let rows: Vec<(usize, usize, usize, String)> = result
             .tokens
             .iter()
@@ -166,6 +165,26 @@ fn a_highlighter_reuses_one_parser_across_documents() {
 }
 
 #[test]
+fn a_highlighter_installs_one_recorder_for_all_its_parses() {
+    // The engine has no unsubscribe, so a recorder per parse on one
+    // instance would stack up, every parse filling every recorder ever
+    // installed (and rebuilding the parser each time). The Highlighter
+    // installs once: the subscriber count stays at one, and no parse
+    // sees another's events. `highlight` consumes its parser, so there
+    // the rule holds by construction.
+    let mut highlighter = Highlighter::new(instance());
+    let baseline = highlighter.highlight("[1,2]").reconciled.len();
+    for _ in 0..50 {
+        assert_eq!(highlighter.highlight("[1,2]").reconciled.len(), baseline);
+    }
+    assert_eq!(highlighter.parser().lex_subscribers.len(), 1);
+    assert_eq!(
+        highlight(instance(), "[1,2]", None).reconciled.len(),
+        baseline
+    );
+}
+
+#[test]
 fn a_fail_fast_parse_is_marked_partial() {
     // Recovery off: the parse stops at the first error, and what was
     // lexed up to it is still highlighted.
@@ -173,7 +192,7 @@ fn a_fail_fast_parse_is_marked_partial() {
     parser
         .grammar_json(&fixture("json-grammar.json"))
         .expect("json-grammar.json installs");
-    let result = highlight(&mut parser, "{\"a\":1 @ 2,\"b\":3}", None);
+    let result = highlight(parser, "{\"a\":1 @ 2,\"b\":3}", None);
     assert!(result.partial);
     assert_eq!(result.errors.len(), 1);
     assert_eq!(result.errors[0].code, "unexpected");
