@@ -29,7 +29,7 @@ in one place, and a thin binary. Status as of this commit:
 | `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens, outline, the reconciled trace | stubs |
 | `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment | rules map and types complete; `outline` is a stub |
 | `hover` | `ts/src/server.js` `onHover` | the token under the cursor and its description (TypeScript answers `null` today; parity means `None` until it ships) | types complete; `hover` is a stub |
-| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations as items, sentinels filtered, fixed source as label | constants and item type complete; `completion` is a stub |
+| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations of the text before the cursor as items, sentinels filtered, fixed source as label, under the parse lock | complete: fixture-tested; the TypeScript items, in order, pinned at the start, middle and end of a document, inside tokens and in both encodings; equal to the TypeScript core on 384 random cursors except where the prefix ends inside a string, an engine divergence registered in `tests/completion_test.rs` |
 | `registry` | `ts/src/registry.js`, `go/registry.go` | the embedded `ts/data/registry.json`; the tiers (`Router`); routing by language id and extension, folder-scoped workspace entries, ties surfaced | file and defaults complete; `Router`, `ext_of`, `fs_path_of`, `contains` are stubs |
 | `loaders` | `ts/src/loaders.js` | L1 linked grammars, L2 specs, L3 dialect text; the grammar firewall and its caps; the sandbox; `Loader` as the binary's `MakeInstance` | `Dialect`, caps, `Loader` registry, `fleet()` complete; firewall, sandbox, compile, `make_instance` are stubs |
 | `jsonrpc` | `go/jsonrpc.go` | Content-Length framing; `Message`; a `Connection` with a reader thread, a locked writer and `recv_timeout` for the debounce | types and helpers complete; framing and `Connection::new` are stubs |
@@ -164,9 +164,9 @@ calls `server::serve`.
 `rs/tests/conformance_test.rs`, one runner per section: `analyze`
 (diagnostic codes in order, the first diagnostic's range, the outline's
 name tree), `completions` (sorted labels at a position) and `semantic`
-(error count, decoded tokens, delta-encoded data). The semantic runner
-passes; the analyze and completions runners are written and ignored
-until their modules land. Values come from the TypeScript pipeline; when
+(error count, decoded tokens, delta-encoded data). The semantic and
+completions runners pass; the analyze runner is written and ignored
+until its module lands. Values come from the TypeScript pipeline; when
 this crate disagrees, this crate changes, and a TypeScript defect is
 reported, not papered over.
 

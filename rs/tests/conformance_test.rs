@@ -197,7 +197,6 @@ fn run_completions(suite: &Suite) {
 }
 
 #[test]
-#[ignore = "completions runner: enabled by the completion module agent once completion, instances and documents are implemented"]
 fn the_completions_section_matches_the_canonical_pipeline() {
     run_completions(&suite());
 }
