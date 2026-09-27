@@ -1,112 +1,39 @@
 // Copyright (c) 2026 Richard Rodger, MIT License
 
-//! The language registry, read from the GENERATED `ts/data/registry.json`
-//! (design §5), embedded at build time so a host needs no file access.
+//! The language registry: the GENERATED `ts/data/registry.json` (design
+//! §5) embedded at build time so a host needs no file access, the
+//! configuration tiers over it, and document routing.
 //!
 //! The file is derived from the fleet's `tabnas.plugin.json` descriptors
-//! by `ts/tools/gen-registry.js` and is never hand-edited; this module
-//! reads it and applies the same defaults `ts/src/registry.js`
-//! `normalize` applies. Two fields matter to semantic tokens: `lexStream`
-//! (`clean` | `speculative`), which gates whether an entry serves them at
-//! all, and `semanticTokens`, the entry's token-name overrides.
+//! by `ts/tools/gen-registry.js` and is never hand-edited; [`Registry`]
+//! reads it and the [`Entry`] accessors apply the same defaults
+//! `ts/src/registry.js` `normalize` applies. [`Router`] is that file's
+//! `Registry` class: the tiers (workspace over user over bundled) and
+//! `resolve`, which turns a document's language id and URI into the
+//! entry that serves it. `go/registry.go` is the flat single-tier form
+//! a generated server needs.
+//!
+//! Status: the embedded file and its defaults are complete and tested;
+//! the tiers and routing ([`Router`], [`ext_of`], [`fs_path_of`],
+//! [`contains`]) are signatures for the registry module agent to fill,
+//! rule for rule from `ts/src/registry.js`: the client's `languageId`
+//! wins only when it names an enabled, non-modifier entry; otherwise the
+//! most specific extension match; workspace entries apply to documents
+//! inside their folder, deepest folder first, then session-wide ones;
+//! ties surface as [`Resolution::ambiguous`], never a silent pick.
 
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::sync::OnceLock;
 
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
 use crate::semantic::Overrides;
+pub use crate::types::Entry;
 
 /// The generated registry, as committed at `ts/data/registry.json`.
 pub const REGISTRY_JSON: &str = include_str!("../../ts/data/registry.json");
-
-/// A registry entry, with the descriptor's fields as written. Use the
-/// accessors for the normalized values.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Entry {
-    /// The plugin package name, `@tabnas/json`.
-    pub name: String,
-    /// The editor language id, when the descriptor declares one.
-    #[serde(default)]
-    pub language_id: Option<String>,
-    #[serde(default, deserialize_with = "null_is_empty")]
-    pub extensions: Vec<String>,
-    #[serde(default, deserialize_with = "null_is_empty")]
-    pub media_types: Vec<String>,
-    /// `grammar` | `compiler` | `modifier`.
-    #[serde(default)]
-    pub plugin_kind: Option<String>,
-    /// `data` | `compiled` | `closure` | `imperative` | `external`.
-    #[serde(default)]
-    pub grammar_kind: Option<String>,
-    /// `clean` | `speculative`.
-    #[serde(default)]
-    pub lex_stream: Option<String>,
-    /// Engine token name to LSP token type name.
-    #[serde(default)]
-    pub semantic_tokens: Option<Overrides>,
-    #[serde(default)]
-    pub sync_groups: Option<Vec<String>>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-    #[serde(default, deserialize_with = "null_is_empty")]
-    pub error_codes: Vec<String>,
-}
-
-/// `null` for an array field reads as an empty array, as the TypeScript
-/// `normalize` reads it (`e.extensions || []`).
-fn null_is_empty<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
-    Ok(Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default())
-}
-
-/// A declared string field, absent when missing, null OR EMPTY: the
-/// TypeScript `normalize` tests truthiness, so `""` takes the default.
-fn declared(field: &Option<String>) -> Option<&str> {
-    field.as_deref().filter(|value| !value.is_empty())
-}
-
-impl Entry {
-    /// The language id: the declared one, else the package name without
-    /// its `@tabnas/` scope. An empty declaration counts as none, as it
-    /// does in the TypeScript `normalize` (`e.languageId || ...`).
-    pub fn language_id(&self) -> &str {
-        match declared(&self.language_id) {
-            Some(id) => id,
-            None => self.name.strip_prefix("@tabnas/").unwrap_or(&self.name),
-        }
-    }
-
-    /// The lex stream classification, `clean` when the descriptor is
-    /// silent.
-    pub fn lex_stream(&self) -> &str {
-        declared(&self.lex_stream).unwrap_or("clean")
-    }
-
-    /// Whether the entry serves semantic tokens: its lex stream is
-    /// `clean` (no negotiated re-lexing, no rewind), so the trace
-    /// reconciles to the tokens the parse used.
-    pub fn is_clean(&self) -> bool {
-        self.lex_stream() == "clean"
-    }
-
-    /// The entry's token-name overrides, if it declares any.
-    pub fn overrides(&self) -> Option<&Overrides> {
-        self.semantic_tokens.as_ref()
-    }
-
-    /// `grammar` when the descriptor is silent.
-    pub fn plugin_kind(&self) -> &str {
-        declared(&self.plugin_kind).unwrap_or("grammar")
-    }
-
-    /// Enabled unless the descriptor says `false` (the editor-collision
-    /// policy the generator applies).
-    pub fn is_enabled(&self) -> bool {
-        self.enabled != Some(false)
-    }
-}
 
 /// The registry: the generated file's entries, indexed by language id.
 #[derive(Debug, Clone, Deserialize)]
@@ -196,6 +123,137 @@ impl Registry {
             .map(|entry| (entry.language_id(), entry))
             .collect()
     }
+}
+
+impl Registry {
+    /// The bundled tier as a host or a [`Router`] takes it: every entry,
+    /// cloned, in file order.
+    pub fn to_entries(&self) -> Vec<Entry> {
+        self.entries.clone()
+    }
+}
+
+// ---------------------------------------------------------------------
+// Tiers and routing: the `Registry` class of ts/src/registry.js.
+
+/// How a document was resolved to its entry (`via` in
+/// `ts/src/registry.js`): a workspace entry by the client's language id
+/// or by extension, else a global (user or bundled) entry by language id
+/// or by extension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Via {
+    WorkspaceLanguageId,
+    WorkspaceExtension,
+    LanguageId,
+    Extension,
+}
+
+impl Via {
+    /// The TypeScript spelling: `workspace:languageId`,
+    /// `workspace:extension`, `languageId`, `extension`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Via::WorkspaceLanguageId => "workspace:languageId",
+            Via::WorkspaceExtension => "workspace:extension",
+            Via::LanguageId => "languageId",
+            Via::Extension => "extension",
+        }
+    }
+}
+
+/// The outcome of routing one document: the entry that serves it (none
+/// when nothing claims it), how it was reached, and, when an extension
+/// is claimed by more than one enabled entry, every claimant's language
+/// id with the chosen one first, so the tie can surface as a diagnostic
+/// rather than a silent pick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Resolution<'a> {
+    pub entry: Option<&'a Entry>,
+    pub via: Option<Via>,
+    pub ambiguous: Vec<String>,
+}
+
+impl Resolution<'_> {
+    /// Nothing claims the document.
+    pub const fn none() -> Self {
+        Resolution {
+            entry: None,
+            via: None,
+            ambiguous: Vec::new(),
+        }
+    }
+}
+
+/// The configuration tiers and the routing over them, the TypeScript
+/// `Registry` class (`go/registry.go` is its single-tier form). Global
+/// entries (bundled, then user, later ones replacing earlier ones with
+/// the same language id) are keyed by language id; workspace entries are
+/// folder-scoped and kept in the order given.
+///
+/// Status: signatures. The registry module agent ports `resolve` rule
+/// for rule, including the Windows-shaped path handling of `contains`
+/// and the `_scope` versus `_dir` distinction (see [`Entry::routing_scope`]).
+#[derive(Debug, Clone, Default)]
+pub struct Router {
+    global: Vec<Entry>,
+    workspace: Vec<Entry>,
+}
+
+impl Router {
+    /// The tiers, as `new Registry(bundled, workspace, user)` takes them.
+    #[allow(unused_variables)] // stub
+    pub fn new(bundled: Vec<Entry>, workspace: Vec<Entry>, user: Vec<Entry>) -> Router {
+        todo!("registry::Router::new: the global map (user over bundled) and the workspace list")
+    }
+
+    /// The global entry with this language id, if any.
+    #[allow(unused_variables)] // stub
+    pub fn get(&self, language_id: &str) -> Option<&Entry> {
+        todo!("registry::Router::get")
+    }
+
+    /// Resolve a document to the entry that serves it: workspace entries
+    /// scoped to a folder containing the document (deepest first), then
+    /// session-wide workspace entries, by language id then by extension;
+    /// then the client's language id when it names an enabled
+    /// non-modifier global entry; then the most specific extension match
+    /// over the global entries, ties reported.
+    #[allow(unused_variables)] // stub
+    pub fn resolve(&self, language_id: &str, uri: &str) -> Resolution<'_> {
+        todo!("registry::Router::resolve: ts/src/registry.js Registry.resolve")
+    }
+
+    /// Every entry, global tier first, then the workspace tier: what
+    /// `tabnas/status` lists and what hot reload walks.
+    pub fn all(&self) -> impl Iterator<Item = &Entry> {
+        self.global.iter().chain(self.workspace.iter())
+    }
+}
+
+/// The lowercased extension of a URI or path (`.json`), `None` when the
+/// last segment has none. `extOf` in `ts/src/registry.js`, `ExtOf` in
+/// `go/documents.go`.
+#[allow(unused_variables)] // stub
+pub fn ext_of(uri: &str) -> Option<String> {
+    todo!("registry::ext_of")
+}
+
+/// The filesystem path of a `file:` URI, percent-decoded, with the
+/// Windows drive form `/c:/dir` reduced to `c:/dir`; `None` for any
+/// other scheme (`untitled:`, `vscode-notebook-cell:`), to which folder
+/// scoping never applies. `fsPathOf` in `ts/src/registry.js`.
+#[allow(unused_variables)] // stub
+pub fn fs_path_of(uri: &str) -> Option<String> {
+    todo!("registry::fs_path_of")
+}
+
+/// Whether `fs_path` is `dir` or inside it. A Windows-shaped `dir` (a
+/// drive letter or a UNC root) is compared with forward slashes, by the
+/// path's shape and never by the host platform; a POSIX backslash is an
+/// ordinary character. `contains` in `ts/src/registry.js`.
+#[allow(unused_variables)] // stub
+pub fn contains(dir: &Path, fs_path: &str) -> bool {
+    todo!("registry::contains")
 }
 
 #[cfg(test)]

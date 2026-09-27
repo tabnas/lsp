@@ -146,11 +146,11 @@ jobs:
           npm i
           node --test test/generate.test.js
 
-  # The Rust crate (rs/, the semantic-token half of the pipeline) is
-  # gated the way the fleet's Rust ports are: everything lives in
-  # ci/rust/run.sh so this file and a contributor's local run cannot say
-  # different things. Its conformance suite runs the same
-  # test/fixtures/lsp-conformance.json section the node and Go jobs run,
+  # The Rust crate (rs/, the Rust port of the pipeline and the stdio
+  # server) is gated the way the fleet's Rust ports are: everything lives
+  # in ci/rust/run.sh so this file and a contributor's local run cannot
+  # say different things. Its conformance suite runs the same
+  # test/fixtures/lsp-conformance.json sections the node and Go jobs run,
   # which is what keeps the port honest against the canonical pipeline.
   ci-rust:
     runs-on: ubuntu-latest
@@ -163,9 +163,27 @@ jobs:
         with:
           path: lsp
 
-      - name: Clone the engine
+      # Every path dependency of rs/Cargo.toml is a sibling checkout, and
+      # cargo reads each one's manifest to resolve the graph whether or
+      # not its feature is on. So the dialect compilers behind `dialects`
+      # and the grammars behind `fleet` are cloned beside the engine,
+      # together with the siblings THEY name (bnf under the compilers;
+      # json, jsonic, hoover and xml under the grammars), which cargo
+      # reads the same way. ci/rust/run.sh checks the manifest's list
+      # before cargo runs, so a crate added there without a clone here
+      # fails with the name of the missing checkout. One line per clone:
+      # a transient task reports as it goes.
+      - name: Clone the sibling crates
         shell: bash
-        run: git clone --depth 1 https://github.com/tabnas/parser.git parser
+        run: |
+          SIBLINGS="parser bnf abnf ebnf gbnf json jsonic jsonc json5 jsonl csv ini hoover toml xml yaml zon feed"
+          total=$(wc -w <<<"$SIBLINGS")
+          n=0
+          for s in $SIBLINGS; do
+            n=$((n + 1))
+            echo "clone: $s ($n of $total)"
+            git clone --depth 1 --quiet "https://github.com/tabnas/$s.git" "$s"
+          done
 
       # Pinned to the MSRV in rs/Cargo.toml rather than to `stable`, so
       # this fails on a change that needs a newer compiler instead of

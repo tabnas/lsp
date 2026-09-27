@@ -160,12 +160,206 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabnas-abnf"
+version = "0.4.16"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde",
+ "serde_json",
+ "tabnas",
+ "tabnas-bnf",
+]
+
+[[package]]
+name = "tabnas-bnf"
+version = "0.1.22"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde",
+ "serde_json",
+ "tabnas",
+]
+
+[[package]]
+name = "tabnas-csv"
+version = "0.5.10"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-ebnf"
+version = "0.1.10"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-bnf",
+]
+
+[[package]]
+name = "tabnas-feed"
+version = "0.6.10"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+ "tabnas-xml",
+]
+
+[[package]]
+name = "tabnas-gbnf"
+version = "0.1.13"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-bnf",
+]
+
+[[package]]
+name = "tabnas-hoover"
+version = "0.3.10"
+dependencies = [
+ "tabnas",
+]
+
+[[package]]
+name = "tabnas-ini"
+version = "0.5.11"
+dependencies = [
+ "indexmap",
+ "serde_json",
+ "tabnas",
+ "tabnas-hoover",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-json"
+version = "0.5.11"
+dependencies = [
+ "regex",
+ "serde_json",
+ "tabnas",
+]
+
+[[package]]
+name = "tabnas-json5"
+version = "0.5.9"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-jsonc"
+version = "0.5.8"
+dependencies = [
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-jsonic"
+version = "0.7.2"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-json",
+]
+
+[[package]]
+name = "tabnas-jsonl"
+version = "0.1.10"
+dependencies = [
+ "serde_json",
+ "tabnas",
+ "tabnas-json",
+]
+
+[[package]]
 name = "tabnas-lsp"
 version = "0.1.3"
 dependencies = [
  "serde",
  "serde_json",
  "tabnas",
+ "tabnas-abnf",
+ "tabnas-csv",
+ "tabnas-ebnf",
+ "tabnas-feed",
+ "tabnas-gbnf",
+ "tabnas-ini",
+ "tabnas-json",
+ "tabnas-json5",
+ "tabnas-jsonc",
+ "tabnas-jsonic",
+ "tabnas-jsonl",
+ "tabnas-toml",
+ "tabnas-xml",
+ "tabnas-yaml",
+ "tabnas-zon",
+]
+
+[[package]]
+name = "tabnas-toml"
+version = "0.5.9"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-xml"
+version = "0.7.10"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-yaml"
+version = "0.5.10"
+dependencies = [
+ "indexmap",
+ "regex",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
+]
+
+[[package]]
+name = "tabnas-zon"
+version = "0.5.10"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+ "tabnas",
+ "tabnas-jsonic",
 ]
 
 [[package]]

@@ -1,15 +1,55 @@
+# The Rust port of the tabnas language server. ts/ is canonical; go/ and
+# this crate track it by fixture parity. `version` MUST equal
+# ts/package.json "version", `VERSION` in ts/src/core.js and
+# `const VERSION` in go/lsp.go: tests/version_test.rs fails the build
+# when they drift.
+
 [package]
 name = "tabnas-lsp"
 version = "0.1.3"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
-description = "Semantic tokens from the tabnas engine's lex trace: the Rust half of the tabnas language server pipeline"
+description = "The tabnas language server in Rust: diagnostics, outline, semantic tokens, hover and completion for every tabnas grammar, as a library for Rust hosts and a stdio server"
 repository = "https://github.com/tabnas/lsp"
 
 [lib]
 name = "tabnas_lsp"
 path = "src/lib.rs"
+
+# The unified server, `tabnas-lsp --stdio`. Without `fleet` it serves the
+# grammars its configuration names (L2 specs and, with `dialects`, L3
+# grammar text), the shape of a generated single-language server; with
+# `fleet` the bundled grammars are linked in as well.
+[[bin]]
+name = "tabnas-lsp"
+path = "src/bin/tabnas-lsp.rs"
+
+[features]
+default = []
+# L3: BNF-dialect grammar text (.abnf, .ebnf, .gbnf) compiled to a pure
+# GrammarSpec at load time (src/loaders.rs). Three crates because they are
+# three dialects: ABNF's compiler rejects the other two, so the loader
+# dispatches on the grammar file's extension and never tries them all.
+dialects = ["dep:tabnas-abnf", "dep:tabnas-ebnf", "dep:tabnas-gbnf"]
+# L1 in Rust: the fleet grammars linked into the binary, each registered
+# by its language id (loaders::fleet). The LIBRARY never needs this: a
+# host supplies its own parsers through the MakeInstance callback, as a
+# Go host does.
+fleet = [
+  "dep:tabnas-csv",
+  "dep:tabnas-feed",
+  "dep:tabnas-ini",
+  "dep:tabnas-json",
+  "dep:tabnas-json5",
+  "dep:tabnas-jsonc",
+  "dep:tabnas-jsonic",
+  "dep:tabnas-jsonl",
+  "dep:tabnas-toml",
+  "dep:tabnas-xml",
+  "dep:tabnas-yaml",
+  "dep:tabnas-zon",
+]
 
 [dependencies]
 # The engine is consumed as a SIBLING CHECKOUT, the standard tabnas
@@ -17,7 +57,35 @@ path = "src/lib.rs"
 # repo. The `tabnas` crate is not published, so there is no registry
 # version to fall back on.
 tabnas = { path = "../../parser/rs" }
-# The registry (ts/data/registry.json, embedded) and the conformance
-# fixtures (test/fixtures/*.json) are read with serde.
+# The registry (ts/data/registry.json, embedded), the conformance fixtures
+# (test/fixtures/*.json), grammar specs, workspace manifests and the
+# JSON-RPC messages are all read and written with serde.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# Every crate below is a sibling checkout too, and cargo reads each one's
+# manifest to resolve the graph whether or not its feature is on, so all
+# of them must be present to build at all -- together with the siblings
+# THEY name: bnf under the three compilers; json under jsonic; jsonic under
+# the grammars layered on it; hoover under ini; xml under feed.
+# ci/rust/run.sh checks the list before cargo runs.
+
+# `dialects`
+tabnas-abnf = { path = "../../abnf/rs", optional = true }
+tabnas-ebnf = { path = "../../ebnf/rs", optional = true }
+tabnas-gbnf = { path = "../../gbnf/rs", optional = true }
+
+# `fleet`: the registry's routed grammars that have a Rust port and a
+# `make()`.
+tabnas-csv = { path = "../../csv/rs", optional = true }
+tabnas-feed = { path = "../../feed/rs", optional = true }
+tabnas-ini = { path = "../../ini/rs", optional = true }
+tabnas-json = { path = "../../json/rs", optional = true }
+tabnas-json5 = { path = "../../json5/rs", optional = true }
+tabnas-jsonc = { path = "../../jsonc/rs", optional = true }
+tabnas-jsonic = { path = "../../jsonic/rs", optional = true }
+tabnas-jsonl = { path = "../../jsonl/rs", optional = true }
+tabnas-toml = { path = "../../toml/rs", optional = true }
+tabnas-xml = { path = "../../xml/rs", optional = true }
+tabnas-yaml = { path = "../../yaml/rs", optional = true }
+tabnas-zon = { path = "../../zon/rs", optional = true }

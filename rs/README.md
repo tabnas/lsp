@@ -1,42 +1,69 @@
 # tabnas-lsp (Rust)
 
-Semantic tokens for tabnas grammars, derived from the engine's lex trace
-with no per-language code: crate `tabnas_lsp`, over the
-[`tabnas`](https://github.com/tabnas/parser) parsing engine.
+The tabnas language server in Rust: crate `tabnas_lsp`, over the
+[`tabnas`](https://github.com/tabnas/parser) parsing engine, as a
+library for Rust hosts and as the `tabnas-lsp` stdio server.
 
-This is the Rust port of ONE half of the tabnas language server pipeline.
-The canonical TypeScript implementation is [`../ts`](../ts)
-(`src/core.js`: `reconcile`, `tokenType`, `semanticTokens`) and the Go
-port is [`../go`](../go) (`semantic.go`); this crate tracks them by
-fixture parity, and TypeScript is authoritative. It exists so that a
-Rust host, the `aless` terminal viewer first, can colour any tabnas
-grammar's text the way the language server does. It is not a language
-server: diagnostics, outline and completion stay in the TypeScript and
-Go packages.
+This is the Rust port of the whole pipeline. The canonical TypeScript
+implementation is [`../ts`](../ts) and the Go port is [`../go`](../go);
+this crate tracks them by fixture parity, never by code sharing, and
+TypeScript is authoritative: when this crate disagrees with the
+fixtures, this crate changes. It exists so that a Rust host, the `aless`
+terminal viewer first, can use the server's analysis as a dependency
+(semantic tokens for any grammar's text, multi-error diagnostics), and
+so that `tabnas-lsp --stdio` runs where Node does not.
 
-The pipeline is the design's (`doc/design.md` §4, §5, §8, §11):
+## Architecture
 
-1. **Trace.** A `LexTrace` recorder, installed with the engine's
-   `subscribe_lex`, keeps every token event the lexer announces:
-   ignored trivia and retractions included.
-2. **Reconcile.** `reconcile` applies the documented lex-trace contract:
-   newest event per source position wins, and a kept token's byte span
-   shadows any older event starting inside it.
-3. **Map.** `token_type` resolves each token name through the entry's
-   `semanticTokens` overrides, then the CANON defaults (`#ST` string,
-   `#NR` number, `#CM` comment, `#VL` keyword, the brackets and
-   separators operator), then the prefix conventions (`KW_` keyword,
-   `LIT_` string, `TRIVIA_` comment, `PP_` macro, `PUNC_` operator, `ID`
-   and `#ID` variable), onto the fixed nine-entry `LEGEND`.
-4. **Position.** `semantic_tokens` converts engine rows and columns to
-   LSP units (0-based lines, UTF-16 columns), keeps the same column and
-   length in Unicode scalar values beside them, and splits a token that
-   spans lines into one token per line. `encode` is the LSP
-   delta-encoded `data` array.
+One module per part of the canonical pipeline (design
+[`doc/design.md`](../doc/design.md) §3, §8, §9, §11), the shared types
+in one place, and a thin binary. Status as of this commit:
 
-The registry (`Registry`, the generated `ts/data/registry.json` embedded
-at build time) says which grammars serve semantic tokens at all
-(`lexStream: clean`) and carries each entry's overrides.
+| Module | Mirrors | Contract | Status |
+|---|---|---|---|
+| `types` | the shared definitions across `ts/src/*.js` | `Position`, `Range`, `PositionEncoding`; `Doc`; `Diagnostic`; `Entry` with `Load`, `Scope`, `EntrySource`; `RuleEvent`, `Collected`; `MakeInstance`; `Config`; `LoadError`, `Issue` | complete |
+| `documents` | `ts/src/documents.js`, `go/documents.go` | the line index; byte offsets, engine rows and columns to and from wire positions in the negotiated encoding; a diagnostic's range; incremental changes; `DocumentStore` | line index and store complete; conversions are stubs |
+| `instances` | `ts/src/instances.js`, `go/core.go` | one instance per cache key; the ONE permanent mux subscriber pair; serialized parses with an active collector; quarantine after 3 failures; invalidation on reload | mux slot complete; cache, keys, `install`, `parse` are stubs |
+| `trace` | `ts/src/core.js` `reconcile` | the `subscribe_lex` collector and the reconciliation contract | complete, fixture-tested |
+| `semantic` | `ts/src/core.js` `tokenType`, `semanticTokens` | the CANON map, prefix conventions, fixed legend, LSP tokens, delta encoding | complete, fixture-tested |
+| `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens, outline, the reconciled trace | stubs |
+| `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment | rules map and types complete; `outline` is a stub |
+| `hover` | `ts/src/server.js` `onHover` | the token under the cursor and its description (TypeScript answers `null` today; parity means `None` until it ships) | types complete; `hover` is a stub |
+| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations as items, sentinels filtered, fixed source as label | constants and item type complete; `completion` is a stub |
+| `registry` | `ts/src/registry.js`, `go/registry.go` | the embedded `ts/data/registry.json`; the tiers (`Router`); routing by language id and extension, folder-scoped workspace entries, ties surfaced | file and defaults complete; `Router`, `ext_of`, `fs_path_of`, `contains` are stubs |
+| `loaders` | `ts/src/loaders.js` | L1 linked grammars, L2 specs, L3 dialect text; the grammar firewall and its caps; the sandbox; `Loader` as the binary's `MakeInstance` | `Dialect`, caps, `Loader` registry, `fleet()` complete; firewall, sandbox, compile, `make_instance` are stubs |
+| `jsonrpc` | `go/jsonrpc.go` | Content-Length framing; `Message`; a `Connection` with a reader thread, a locked writer and `recv_timeout` for the debounce | types and helpers complete; framing and `Connection::new` are stubs |
+| `server` | `ts/src/server.js`, `go/server.go` | capabilities; incremental sync; 150 ms debounce; version-stamped push diagnostics; stale results suppressed; `tabnas/status`; workspace grammars and hot reload; negotiated encoding, document size cap and parse deadline | `capabilities` and `negotiate_encoding` complete; the loop and handlers are stubs |
+| `highlight` | (Rust hosts only) | `highlight()` and `Highlighter`: parse and return byte spans to colour | complete, fixture-tested |
+| `src/bin/tabnas-lsp.rs` | `ts/bin/tabnas-lsp.js` | `--stdio`, `--version`, `--help`; builds `Config` from the bundled registry and the loader | complete over the stubs |
+
+A stub is a `todo!()` body under the module's contract in its doc
+comment. Every public signature above is fixed: the module agents fill
+bodies without changing them, and a signature change is a change to
+this table.
+
+### Features
+
+- `dialects`: L3 grammar files. Links `tabnas-abnf`, `tabnas-ebnf` and
+  `tabnas-gbnf` (three crates, three dialects, dispatched by extension).
+- `fleet`: the bundled grammars linked into the binary and registered
+  by package name (`loaders::fleet`): csv, feed, ini, json, json5,
+  jsonc, jsonic, jsonl, toml, xml, yaml, zon. The library never needs
+  it: a host supplies its own parsers through `MakeInstance`.
+
+Both are off by default. Every optional crate is a sibling checkout and
+cargo reads each manifest to resolve, feature on or off, so all of them
+(and the siblings they name: bnf, hoover) must be present to build;
+`ci/rust/run.sh` checks the list first.
+
+### The engine contract used
+
+`parse_recover` (multi-error diagnostics), `subscribe_rule_done`
+(outline), `subscribe_lex` (semantic tokens), `continuations`
+(completion), `parse_budget` (the deadline), `GrammarSpec::from_value`
+and `Tabnas::grammar` (L2), all opt-in in the engine and all on the
+engine's own thread of control: the server runs one message at a time
+and never parses off it.
 
 ## Use
 
@@ -87,9 +114,8 @@ The engine has no unsubscribe API, so the recorder `highlight` installs
 stays on the parser, and every parse fills every recorder ever installed
 on it; that is why `highlight` takes the instance by value rather than
 letting a second call stack a second recorder. To parse repeatedly with
-one instance (a viewer reloading a file, a server re-analysing a
-document), keep one `Highlighter`, which installs the recorder once and
-drains it between parses:
+one instance, keep one `Highlighter`, which installs the recorder once
+and drains it between parses:
 
 ```rust
 use tabnas::Tabnas;
@@ -118,20 +144,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The LSP form is beside the spans. `result.tokens` holds one
-`SemanticToken` per span, with `row`, `col` and `len` in the wire units
-and `col_chars` and `len_chars` in scalar values, and
-`tabnas_lsp::encode(&result.tokens)` is the `data` array a server would
-send.
+The LSP form is beside the spans: `result.tokens` holds one
+`SemanticToken` per span and `tabnas_lsp::encode(&result.tokens)` is the
+`data` array a server would send.
+
+The full pipeline, once the stubs are filled, is the same shape the Go
+port offers: build an `Entry` for the language, an `Instances` over a
+`MakeInstance` that returns a parser with the grammar installed and
+recovery enabled, and call `analyze(&instances, &inst, &entry, &doc)`
+for diagnostics, semantic tokens and outline together, `completion` for
+items at a position, and `hover` for the token under the cursor. A host
+that wants the server rather than the library builds a `Config` and
+calls `server::serve`.
 
 ## Parity
 
-`test/fixtures/lsp-conformance.json` carries a `semantic` section:
-documents, the parse's error count, the expected tokens as
-`[line, character, length, type]` rows and the delta-encoded `data`.
+`test/fixtures/lsp-conformance.json` is the contract, executed by
 `ts/test/conformance.test.js`, `go/conformance_test.go` and
-`rs/tests/conformance_test.rs` all execute it. The values come from the
-TypeScript pipeline; when this crate disagrees, this crate changes.
+`rs/tests/conformance_test.rs`, one runner per section: `analyze`
+(diagnostic codes in order, the first diagnostic's range, the outline's
+name tree), `completions` (sorted labels at a position) and `semantic`
+(error count, decoded tokens, delta-encoded data). The semantic runner
+passes; the analyze and completions runners are written and ignored
+until their modules land. Values come from the TypeScript pipeline; when
+this crate disagrees, this crate changes, and a TypeScript defect is
+reported, not papered over.
 
 ## Install
 
@@ -153,7 +190,8 @@ resolve.
 
 A git dependency works the same way: `tabnas-lsp = { git =
 "https://github.com/tabnas/lsp" }` with a `[patch]` entry redirecting
-`tabnas` at your own checkout or git reference.
+`tabnas` at your own checkout or git reference. The library needs no
+feature; a host never links the fleet.
 
 ## Test
 
@@ -167,4 +205,5 @@ cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 `ci/rust/run.sh` runs the same commands through the MSRV toolchain
-(`rust-version` in `Cargo.toml`), checks the lock, and is what CI runs.
+(`rust-version` in `Cargo.toml`), checks that every sibling the manifest
+names is present, checks the lock, and is what CI runs.
