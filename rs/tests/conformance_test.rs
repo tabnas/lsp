@@ -8,12 +8,8 @@
 // case: `run_analyze` (diagnostic codes in order, the first diagnostic's
 // range, the outline's name tree), `run_completions` (sorted item
 // labels at a position) and `run_semantic` (error count, decoded tokens,
-// delta-encoded data). The analyze and completions runners are written
-// against the module signatures and their tests are IGNORED until the
-// analyze, completion, instances and documents modules are implemented:
-// each module agent removes the `ignore` on the runner its work
-// completes. A new fixture section (hover, outline positions) gets a
-// runner of its own here.
+// delta-encoded data). A new fixture section (hover, outline positions)
+// gets a runner of its own here.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -145,6 +141,9 @@ fn run_analyze(suite: &Suite) {
     let (instances, inst, entry) = stack();
     for case in &suite.analyze {
         let analysis = analyze(&instances, &inst, &entry, &doc(&case.input));
+        // Every fixture document recovers to the end: recovery reports
+        // the errors and the analysis is not a failure.
+        assert!(!analysis.failed, "{}: the analysis failed", case.name);
         let codes: Vec<&str> = analysis
             .diagnostics
             .iter()
@@ -168,7 +167,6 @@ fn run_analyze(suite: &Suite) {
 }
 
 #[test]
-#[ignore = "analyze runner: enabled by the analyze module agent once analyze, instances and documents are implemented"]
 fn the_analyze_section_matches_the_canonical_pipeline() {
     run_analyze(&suite());
 }
@@ -241,6 +239,37 @@ fn run_semantic(suite: &Suite) {
 #[test]
 fn the_semantic_section_matches_the_canonical_pipeline() {
     run_semantic(&suite());
+}
+
+/// The same section through `analyze`, the way the Go runner executes
+/// it: the entry carries the case's overrides, the mux collects the lex
+/// trace, and the analysis's `data` is the fixture's.
+#[test]
+fn the_semantic_section_matches_through_analyze() {
+    let suite = suite();
+    let (instances, inst, entry) = stack();
+    for case in &suite.semantic {
+        let mut entry = entry.clone();
+        entry.semantic_tokens = case.overrides.clone();
+        let analysis = analyze(&instances, &inst, &entry, &doc(&case.input));
+        assert_eq!(
+            analysis.errors.len(),
+            case.errors,
+            "{}: error count",
+            case.name
+        );
+        let tokens = analysis
+            .semantic_tokens
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}: no semantic tokens for a clean entry", case.name));
+        assert_eq!(tokens.data, case.data, "{}: data", case.name);
+        let rows: Vec<(usize, usize, usize, String)> = tokens
+            .tokens
+            .iter()
+            .map(|t| (t.row, t.col, t.len, t.kind.name().to_string()))
+            .collect();
+        assert_eq!(rows, case.tokens, "{}: tokens", case.name);
+    }
 }
 
 // ---------------------------------------------------------------------

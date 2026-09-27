@@ -26,9 +26,9 @@ in one place, and a thin binary. Status as of this commit:
 | `instances` | `ts/src/instances.js`, `go/core.go` | one instance per cache key; the ONE permanent mux subscriber pair; serialized parses with an active collector; quarantine after 3 failures; invalidation on reload | complete: parses serialized across threads by a re-entrant gate, a panicking `MakeInstance` counted toward quarantine; tested against the fixture grammar |
 | `trace` | `ts/src/core.js` `reconcile` | the `subscribe_lex` collector and the reconciliation contract | complete, fixture-tested |
 | `semantic` | `ts/src/core.js` `tokenType`, `semanticTokens` | the CANON map, prefix conventions, fixed legend, LSP tokens, delta encoding | complete, fixture-tested |
-| `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens, outline, the reconciled trace | stubs |
-| `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment | rules map and types complete; `outline` is a stub |
-| `hover` | `ts/src/server.js` `onHover` | the token under the cursor and its description (TypeScript answers `null` today; parity means `None` until it ships) | types complete; `hover` is a stub |
+| `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens (in the document's encoding), outline, the reconciled trace | complete: fixture-tested, and equal to the TypeScript pipeline on 2,000 random documents wherever the two engines agree on the parse |
+| `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment, at the engine's columns | complete, fixture-tested; nesting bounded at `MAX_OUTLINE_DEPTH` (256) so no document can exhaust a stack, a bound TypeScript does not have |
+| `hover` | `ts/src/server.js` `onHover` | the token under the cursor (`token_at`, `token_range`) and its description (TypeScript answers `null` today; parity means `None` until it ships) | complete |
 | `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations of the text before the cursor as items, sentinels filtered, fixed source as label, under the parse lock | complete: fixture-tested; the TypeScript items, in order, pinned at the start, middle and end of a document, inside tokens and in both encodings; equal to the TypeScript core on 384 random cursors except where the prefix ends inside a string, an engine divergence registered in `tests/completion_test.rs` |
 | `registry` | `ts/src/registry.js`, `go/registry.go` | the embedded `ts/data/registry.json`; the tiers (`Router`); routing by language id and extension, folder-scoped workspace entries, ties surfaced | file and defaults complete; `Router`, `ext_of`, `fs_path_of`, `contains` are stubs |
 | `loaders` | `ts/src/loaders.js` | L1 linked grammars, L2 specs, L3 dialect text; the grammar firewall and its caps; the sandbox; `Loader` as the binary's `MakeInstance` | `Dialect`, caps, `Loader` registry, `fleet()` complete; firewall, sandbox, compile, `make_instance` are stubs |
@@ -164,11 +164,10 @@ calls `server::serve`.
 `rs/tests/conformance_test.rs`, one runner per section: `analyze`
 (diagnostic codes in order, the first diagnostic's range, the outline's
 name tree), `completions` (sorted labels at a position) and `semantic`
-(error count, decoded tokens, delta-encoded data). The semantic and
-completions runners pass; the analyze runner is written and ignored
-until its module lands. Values come from the TypeScript pipeline; when
-this crate disagrees, this crate changes, and a TypeScript defect is
-reported, not papered over.
+(error count, decoded tokens, delta-encoded data). All three runners
+pass. Values come from the TypeScript pipeline; when this crate
+disagrees, this crate changes, and a TypeScript defect is reported, not
+papered over.
 
 ## Install
 
