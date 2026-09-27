@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::OnceLock;
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::semantic::Overrides;
 
@@ -31,9 +31,9 @@ pub struct Entry {
     /// The editor language id, when the descriptor declares one.
     #[serde(default)]
     pub language_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_is_empty")]
     pub extensions: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_is_empty")]
     pub media_types: Vec<String>,
     /// `grammar` | `compiler` | `modifier`.
     #[serde(default)]
@@ -51,16 +51,29 @@ pub struct Entry {
     pub sync_groups: Option<Vec<String>>,
     #[serde(default)]
     pub enabled: Option<bool>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_is_empty")]
     pub error_codes: Vec<String>,
+}
+
+/// `null` for an array field reads as an empty array, as the TypeScript
+/// `normalize` reads it (`e.extensions || []`).
+fn null_is_empty<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    Ok(Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// A declared string field, absent when missing, null OR EMPTY: the
+/// TypeScript `normalize` tests truthiness, so `""` takes the default.
+fn declared(field: &Option<String>) -> Option<&str> {
+    field.as_deref().filter(|value| !value.is_empty())
 }
 
 impl Entry {
     /// The language id: the declared one, else the package name without
-    /// its `@tabnas/` scope.
+    /// its `@tabnas/` scope. An empty declaration counts as none, as it
+    /// does in the TypeScript `normalize` (`e.languageId || ...`).
     pub fn language_id(&self) -> &str {
-        match &self.language_id {
-            Some(id) => id.as_str(),
+        match declared(&self.language_id) {
+            Some(id) => id,
             None => self.name.strip_prefix("@tabnas/").unwrap_or(&self.name),
         }
     }
@@ -68,7 +81,7 @@ impl Entry {
     /// The lex stream classification, `clean` when the descriptor is
     /// silent.
     pub fn lex_stream(&self) -> &str {
-        self.lex_stream.as_deref().unwrap_or("clean")
+        declared(&self.lex_stream).unwrap_or("clean")
     }
 
     /// Whether the entry serves semantic tokens: its lex stream is
@@ -85,7 +98,7 @@ impl Entry {
 
     /// `grammar` when the descriptor is silent.
     pub fn plugin_kind(&self) -> &str {
-        self.plugin_kind.as_deref().unwrap_or("grammar")
+        declared(&self.plugin_kind).unwrap_or("grammar")
     }
 
     /// Enabled unless the descriptor says `false` (the editor-collision
@@ -197,6 +210,33 @@ mod tests {
         let empty = r#"{"count": 0, "entries": []}"#;
         assert!(Registry::from_json(empty).is_err());
         assert!(Registry::from_json("nope").is_err());
+    }
+
+    #[test]
+    fn falsy_fields_take_the_typescript_defaults() {
+        // `normalize` tests truthiness: an empty language id is no id,
+        // an empty classification is the default one, and a null array
+        // is an empty one. The generated file never carries these
+        // shapes; a hand-written registry may.
+        let src = r#"{"count": 1, "entries": [
+            {"name": "@tabnas/x", "languageId": "", "extensions": null,
+             "mediaTypes": null, "errorCodes": null, "lexStream": "",
+             "pluginKind": "", "semanticTokens": null, "syncGroups": null,
+             "enabled": null}
+        ]}"#;
+        let registry = Registry::from_json(src).unwrap();
+        let x = registry
+            .entry("x")
+            .expect("an empty id falls back to the package name");
+        assert_eq!(x.language_id(), "x");
+        assert!(x.extensions.is_empty());
+        assert!(x.media_types.is_empty());
+        assert!(x.error_codes.is_empty());
+        assert_eq!(x.lex_stream(), "clean");
+        assert_eq!(x.plugin_kind(), "grammar");
+        assert_eq!(x.overrides(), None);
+        assert!(x.is_enabled());
+        assert!(registry.clean("x"));
     }
 
     #[test]
