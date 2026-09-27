@@ -20,6 +20,7 @@
 //! the unit differs, and it cancels out because the shadowing arithmetic
 //! only ever compares one event's offsets with another's.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tabnas::{Tabnas, Token};
@@ -151,25 +152,63 @@ impl LexTrace {
 /// contract: iterate newest-first, a claimed byte span `[si, si + span)`
 /// shadows any older event starting inside it; the survivors are
 /// returned sorted by position.
+///
+/// The claimed spans are kept as their union, disjoint intervals keyed
+/// by start, so each event costs one ordered lookup (the interval with
+/// the greatest start at or before it, if that reaches past it) rather
+/// than a scan of every span claimed so far: N events reconcile in
+/// `O(N log N)`. The scan was quadratic, and an ordinary in-order trace
+/// is its worst case, since no claimed span ever matches an older event
+/// there; it took seconds at 80k tokens and would take tens of minutes
+/// on a large minified document.
 pub fn reconcile(events: &[TokenPoint]) -> Vec<TokenPoint> {
-    let mut claimed: Vec<(usize, usize)> = Vec::new();
+    let mut claimed: BTreeMap<usize, usize> = BTreeMap::new();
     let mut out: Vec<TokenPoint> = Vec::new();
     for event in events.iter().rev() {
         let shadowed = claimed
-            .iter()
-            .any(|&(start, end)| event.si >= start && event.si < end);
+            .range(..=event.si)
+            .next_back()
+            .is_some_and(|(_, &end)| event.si < end);
         if shadowed {
             continue;
         }
-        claimed.push((event.si, event.si + event.span()));
+        claim(
+            &mut claimed,
+            event.si,
+            event.si.saturating_add(event.span()),
+        );
         out.push(event.clone());
     }
     out.sort_by_key(|event| event.si);
     out
 }
 
+/// Add `[start, end)` to the union of claimed spans, absorbing every
+/// interval it touches so the map stays disjoint. `start` is never inside
+/// an existing interval (the caller checked), so the one before it can
+/// only touch it.
+fn claim(claimed: &mut BTreeMap<usize, usize>, mut start: usize, mut end: usize) {
+    if let Some((&s, &e)) = claimed.range(..=start).next_back() {
+        if e >= start {
+            claimed.remove(&s);
+            start = s;
+            end = end.max(e);
+        }
+    }
+    while let Some((&s, &e)) = claimed.range(start..).next() {
+        if s > end {
+            break;
+        }
+        claimed.remove(&s);
+        end = end.max(e);
+    }
+    claimed.insert(start, end);
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::*;
 
     fn point(name: &str, si: usize, src: &str) -> TokenPoint {
@@ -177,7 +216,7 @@ mod tests {
             name: name.into(),
             si,
             ri: 1,
-            ci: si + 1,
+            ci: si.saturating_add(1),
             len: src.len(),
             src: src.into(),
         }
@@ -234,6 +273,52 @@ mod tests {
         // Announced twice, kept once; the earlier real token survives.
         let events = vec![point("#NR", 0, "123"), end.clone(), end.clone()];
         assert_eq!(reconcile(&events), vec![point("#NR", 0, "123"), end]);
+    }
+
+    #[test]
+    fn claimed_spans_shadow_as_a_union() {
+        // Newest-first: `#C` claims [3, 4), then `#AB` claims [0, 5)
+        // around it. `#D` at 4 is inside `#AB`, so it is shadowed even
+        // though the claimed span nearest before it, `#C`, ends at 4: the
+        // spans shadow as a union, not one at a time.
+        let events = vec![
+            point("#D", 4, "e"),
+            point("#AB", 0, "abcde"),
+            point("#C", 3, "d"),
+        ];
+        let names: Vec<String> = reconcile(&events).into_iter().map(|t| t.name).collect();
+        assert_eq!(names, ["#AB", "#C"]);
+        // Touching spans merge without closing the position after them.
+        let events = vec![
+            point("#GAP", 2, "c"),
+            point("#A", 0, "a"),
+            point("#B", 1, "b"),
+            point("#E", 4, "e"),
+        ];
+        let names: Vec<String> = reconcile(&events).into_iter().map(|t| t.name).collect();
+        assert_eq!(names, ["#A", "#B", "#GAP", "#E"]);
+    }
+
+    #[test]
+    fn a_span_at_the_end_of_the_address_space_does_not_overflow() {
+        // Only a hand-made event can sit there; it is kept, not a panic.
+        let events = vec![point("#X", usize::MAX, "x"), point("#Y", 0, "y")];
+        let sis: Vec<usize> = reconcile(&events).iter().map(|t| t.si).collect();
+        assert_eq!(sis, [0, usize::MAX]);
+    }
+
+    #[test]
+    fn a_long_trace_reconciles_in_one_pass() {
+        // 200k in-order events, every one kept. The span scan this
+        // replaces took 1.6 s at 80k in release and grows with the
+        // square; the bound is generous and still far below it.
+        let n = 200_000;
+        let events: Vec<TokenPoint> = (0..n).map(|i| point("#NR", i, "1")).collect();
+        let started = Instant::now();
+        let out = reconcile(&events);
+        let elapsed = started.elapsed();
+        assert_eq!(out, events);
+        assert!(elapsed < Duration::from_secs(10), "{elapsed:?}");
     }
 
     #[test]
