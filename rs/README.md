@@ -23,7 +23,7 @@ in one place, and a thin binary. Status as of this commit:
 |---|---|---|---|
 | `types` | the shared definitions across `ts/src/*.js` | `Position`, `Range`, `PositionEncoding`; `Doc`; `Diagnostic`; `Entry` with `Load`, `Scope`, `EntrySource`; `RuleEvent`, `Collected`; `MakeInstance`; `Config`; `LoadError`, `Issue` | complete |
 | `documents` | `ts/src/documents.js`, `go/documents.go` | the line index; byte offsets, engine rows and columns to and from wire positions in the negotiated encoding; a diagnostic's range; incremental changes; `DocumentStore` | line index and store complete; conversions are stubs |
-| `instances` | `ts/src/instances.js`, `go/core.go` | one instance per cache key; the ONE permanent mux subscriber pair; serialized parses with an active collector; quarantine after 3 failures; invalidation on reload | mux slot complete; cache, keys, `install`, `parse` are stubs |
+| `instances` | `ts/src/instances.js`, `go/core.go` | one instance per cache key; the ONE permanent mux subscriber pair; serialized parses with an active collector; quarantine after 3 failures; invalidation on reload | complete: parses serialized across threads by a re-entrant gate, a panicking `MakeInstance` counted toward quarantine; tested against the fixture grammar |
 | `trace` | `ts/src/core.js` `reconcile` | the `subscribe_lex` collector and the reconciliation contract | complete, fixture-tested |
 | `semantic` | `ts/src/core.js` `tokenType`, `semanticTokens` | the CANON map, prefix conventions, fixed legend, LSP tokens, delta encoding | complete, fixture-tested |
 | `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens, outline, the reconciled trace | stubs |
