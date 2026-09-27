@@ -3,8 +3,9 @@
 package lsp
 
 // The cross-runtime conformance suite (design §13): the same fixtures
-// ts/test/conformance.test.js runs. TS is canonical — a mismatch here
-// is a defect in this port, never a fixture update.
+// ts/test/conformance.test.js and rs/tests/conformance_test.rs run. TS
+// is canonical — a mismatch here is a defect in this port, never a
+// fixture update.
 
 import (
 	"encoding/json"
@@ -31,6 +32,32 @@ type confSuite struct {
 		Position Position `json:"position"`
 		Labels   []string `json:"labels"`
 	} `json:"completions"`
+	Semantic []struct {
+		Name      string            `json:"name"`
+		Input     string            `json:"input"`
+		Overrides map[string]string `json:"overrides"`
+		Errors    int               `json:"errors"`
+		Tokens    [][]any           `json:"tokens"`
+		Data      []int             `json:"data"`
+	} `json:"semantic"`
+}
+
+// decodeTokens is the fixture's `tokens` form of a `data` array: the
+// deltas resolved through the legend. It keeps the two forms of each
+// case honest with each other, as the TS runner's decodeTokens does.
+func decodeTokens(data []int) [][]any {
+	rows := [][]any{}
+	line, char := 0, 0
+	for i := 0; i+4 < len(data); i += 5 {
+		line += data[i]
+		if 0 == data[i] {
+			char += data[i+1]
+		} else {
+			char = data[i+1]
+		}
+		rows = append(rows, []any{line, char, data[i+2], Legend[data[i+3]]})
+	}
+	return rows
 }
 
 func outlineNames(list []*DocumentSymbol) []confOutline {
@@ -88,6 +115,26 @@ func TestConformance(t *testing.T) {
 			sort.Strings(labels)
 			if enc(labels) != enc(c.Labels) {
 				t.Fatalf("labels = %s, want %s", enc(labels), enc(c.Labels))
+			}
+		})
+	}
+
+	for _, c := range suite.Semantic {
+		t.Run("semantic: "+c.Name, func(t *testing.T) {
+			spec := *entry
+			spec.SemanticTokens = c.Overrides
+			a := Analyze(instances, inst, &spec, doc(c.Input))
+			if len(a.Errors) != c.Errors {
+				t.Fatalf("errors = %d, want %d", len(a.Errors), c.Errors)
+			}
+			if nil == a.SemanticTokens {
+				t.Fatal("no semantic tokens for a clean entry")
+			}
+			if enc(a.SemanticTokens.Data) != enc(c.Data) {
+				t.Fatalf("data = %s, want %s", enc(a.SemanticTokens.Data), enc(c.Data))
+			}
+			if enc(decodeTokens(c.Data)) != enc(c.Tokens) {
+				t.Fatalf("tokens = %s, want %s", enc(decodeTokens(c.Data)), enc(c.Tokens))
 			}
 		})
 	}

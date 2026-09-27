@@ -2,6 +2,7 @@ node_modules/
 *.log
 go.work
 go.work.sum
+rs/target/
 
 # Vale's downloaded style packages. The vocabulary under
 # .vale/styles/config/ and the house rule under .vale/styles/Tabnas/

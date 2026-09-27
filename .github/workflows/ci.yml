@@ -5,10 +5,11 @@
 # build step, and the Go half needs a go.work over the sibling engine
 # checkout rather than a released module.
 #
-# Both jobs clone the parser as a sibling and use it at main: the ts/
-# package's `file:../../parser/ts` devDependency and go/'s `make
-# test-go` go.work both resolve that layout. That is the point — this
-# repo tracks engine contract work that may be unreleased.
+# All three jobs clone the parser as a sibling and use it at main: the
+# ts/ package's `file:../../parser/ts` devDependency, go/'s `make
+# test-go` go.work and rs/'s `path = "../../parser/rs"` dependency all
+# resolve that layout. That is the point — this repo tracks engine
+# contract work that may be unreleased.
 #
 # Action refs use version tags for readability; Renovate
 # (helpers:pinGitHubActionDigests) pins them to commit SHAs automatically.
@@ -144,3 +145,44 @@ jobs:
         run: |
           npm i
           node --test test/generate.test.js
+
+  # The Rust crate (rs/, the semantic-token half of the pipeline) is
+  # gated the way the fleet's Rust ports are: everything lives in
+  # ci/rust/run.sh so this file and a contributor's local run cannot say
+  # different things. Its conformance suite runs the same
+  # test/fixtures/lsp-conformance.json section the node and Go jobs run,
+  # which is what keeps the port honest against the canonical pipeline.
+  ci-rust:
+    runs-on: ubuntu-latest
+    steps:
+      # Checked out into a NAMED directory, like the other jobs:
+      # rs/Cargo.toml takes the engine as `path = "../../parser/rs"`,
+      # which resolves relative to rs/, so the engine has to sit beside
+      # this checkout rather than inside it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: lsp
+
+      - name: Clone the engine
+        shell: bash
+        run: git clone --depth 1 https://github.com/tabnas/parser.git parser
+
+      # Pinned to the MSRV in rs/Cargo.toml rather than to `stable`, so
+      # this fails on a change that needs a newer compiler instead of
+      # passing here and breaking for anyone honouring rust-version.
+      # rustup, NOT a third-party toolchain action: these repos allow only
+      # GitHub-owned and verified-creator actions, so such an action is
+      # refused before any job starts. The runners ship rustup.
+      #
+      # `default` is what makes the MSRV the toolchain the gate runs
+      # under; installing it alone leaves cargo on the runner's
+      # pre-installed stable.
+      - name: Set up Rust MSRV
+        shell: bash
+        run: |
+          rustup toolchain install 1.85 --profile minimal --component rustfmt,clippy
+          rustup default 1.85
+
+      - name: Rust gate
+        shell: bash
+        run: lsp/ci/rust/run.sh
