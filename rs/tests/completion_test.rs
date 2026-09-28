@@ -258,10 +258,12 @@ type Divergent = (
 );
 
 #[test]
-fn inside_a_string_is_a_registered_engine_divergence() {
+fn inside_a_string_or_comment_is_a_registered_engine_divergence() {
     // An ENGINE divergence, parser's to repair, not this crate's: after a
-    // prefix ending in an unterminated string the lexer fails, and the
-    // three engines' `continuations` answer three ways. TypeScript
+    // prefix ending in an unterminated string (or block comment: the
+    // random sweep, tests/parity_sweep.rs, found every one of its
+    // completion differences to be one of the two) the lexer fails, and
+    // the three engines' `continuations` answer three ways. TypeScript
     // (canonical) offers the start rule's openers, whatever the context;
     // Rust offers the failing rule's tokens, a key or a close brace in an
     // object and a value or a close square in a list; Go another reading
@@ -271,14 +273,17 @@ fn inside_a_string_is_a_registered_engine_divergence() {
     // `inside_a_string_the_prefix_ends_in_the_string` with the canonical
     // items. Completion itself maps whatever the engine answers.
     let in_an_object = vec![kw("#NR"), kw("#ST"), kw("#VL"), op("}", "#CB")];
-    let in_a_list_string = vec![
-        kw("#NR"),
-        kw("#ST"),
-        kw("#VL"),
-        op("{", "#OB"),
-        op("[", "#OS"),
-        op("]", "#CS"),
-    ];
+    let in_a_list_string_comment = || {
+        vec![
+            kw("#NR"),
+            kw("#ST"),
+            kw("#VL"),
+            op("{", "#OB"),
+            op("[", "#OS"),
+            op("]", "#CS"),
+        ]
+    };
+    let in_a_list_string = in_a_list_string_comment();
     let cases: Vec<Divergent> = vec![
         (
             "inside a list's string",
@@ -320,7 +325,21 @@ fn inside_a_string_is_a_registered_engine_divergence() {
             "{\n  \"a\": 1\n}",
             (1, 3),
             openers(),
+            in_an_object.clone(),
+        ),
+        (
+            "inside an object's block comment",
+            "{/* x */\"a\":1}",
+            (0, 3),
+            openers(),
             in_an_object,
+        ),
+        (
+            "inside a list's block comment",
+            "[/* x */1]",
+            (0, 3),
+            openers(),
+            in_a_list_string_comment(),
         ),
     ];
     let (instances, inst, entry) = stack();
