@@ -615,7 +615,7 @@ mod tests {
     fn diagnostics_take_their_source_from_the_entry_and_skip_the_unknown_registry_page() {
         let text = "{\"a\":1 # 2}";
         let unknown = TabnasError::new("unknown", "#", text, 7, 1, 8);
-        let d = diagnostics(&[unknown.clone()], None, &doc(text));
+        let d = diagnostics(std::slice::from_ref(&unknown), None, &doc(text));
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].source, "tabnas");
         assert_eq!(d[0].code.as_deref(), Some("unknown"));
