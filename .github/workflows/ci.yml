@@ -56,16 +56,19 @@ jobs:
 
       # The suite includes the generator end-to-end tests, which RUN a
       # generated Node server against a scripted LSP session and — when
-      # allowed — compile and run a generated Go server too. The Go
-      # case is explicitly suppressed here rather than left to a
-      # toolchain probe: hosted runner images ship SOME Go, so a probe
-      # would silently run it against an unpinned runner-image version.
-      # ci-go owns the Go coverage, pinned to 1.24.
+      # allowed — compile and run a generated Go server and a generated
+      # Rust server too. Those two cases are explicitly suppressed here
+      # rather than left to a toolchain probe: hosted runner images ship
+      # SOME Go and SOME Rust, so a probe would silently run them against
+      # unpinned runner-image versions. ci-go owns the Go coverage,
+      # pinned to 1.24; ci-rust owns the Rust coverage, pinned to the
+      # MSRV.
       - name: Test
         shell: bash
         working-directory: lsp/ts
         env:
           TABNAS_LSP_GO_E2E: "0"
+          TABNAS_LSP_RUST_E2E: "0"
         run: npm test
 
       # The registry is generated from fleet descriptors, so a stale
@@ -142,6 +145,8 @@ jobs:
       - name: Generator end-to-end (Go target)
         shell: bash
         working-directory: lsp/ts
+        env:
+          TABNAS_LSP_RUST_E2E: "0"
         run: |
           npm i
           node --test test/generate.test.js
@@ -204,3 +209,22 @@ jobs:
       - name: Rust gate
         shell: bash
         run: lsp/ci/rust/run.sh
+
+      # The generator's Rust end-to-end case, against the MSRV above: it
+      # generates a crate over this checkout's rs/ (a path in place of
+      # the git dependency, as the Go case replaces go/), builds it with
+      # cargo and drives it through the scripted LSP session. It lives in
+      # the TypeScript suite, so Node comes too; only the generate-rust
+      # tests run, and the Go case stays with ci-go.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24.x"
+
+      - name: Generator end-to-end (Rust target)
+        shell: bash
+        working-directory: lsp/ts
+        env:
+          TABNAS_LSP_GO_E2E: "0"
+        run: |
+          npm i
+          node --test --test-name-pattern generate-rust test/generate.test.js
