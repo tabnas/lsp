@@ -403,6 +403,104 @@ fn l2_a_spec_the_engine_rejects_is_a_load_error() {
 }
 
 #[test]
+fn l2_a_spec_file_nested_past_the_json_reader_gets_the_firewalls_refusal() {
+    // serde_json stops at 128 levels, above MAX_GRAMMAR_DEPTH; JSON.parse
+    // reads any depth and the firewall refuses it, so the refusal is the
+    // firewall's here too.
+    let dir = temp_dir("deepfile");
+    let depth = 130;
+    let deep = format!(
+        "{{\"rule\": {{}}, \"options\": {}{}}}",
+        "[".repeat(depth),
+        "]".repeat(depth)
+    );
+    fs::write(dir.join("deep.json"), deep).unwrap();
+    let entry = entry(json!({
+        "name": "d", "languageId": "d", "load": {"spec": "deep.json"},
+        "_source": "workspace", "_dir": dir,
+    }));
+    let error = refused(Loader::new().make_instance(&entry));
+    assert_eq!(
+        error.message, "grammar for d failed the firewall",
+        "{error}"
+    );
+    assert!(
+        has(
+            &error.issues,
+            "$",
+            &format!("grammar nesting deeper than {MAX_GRAMMAR_DEPTH} levels")
+        ),
+        "{error}"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_alt_scan_stops_collecting_past_a_hundred_findings_too() {
+    // Each unknown $-name costs an engine probe, so the scan of alt
+    // positions stops where the options scan does; a spec with more
+    // unknown references than that is refused either way.
+    let names: Vec<Value> = (0..20_000).map(|i| json!(format!("@r{i}$"))).collect();
+    let spec = json!({"rule": {"val": {"open": [{"s": "#NR", "a": names}]}}});
+    let started = std::time::Instant::now();
+    let issues = firewall_spec(&spec);
+    assert_eq!(issues.len(), 101, "{}", issues.len());
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    // The same names again are remembered, not probed.
+    let started = std::time::Instant::now();
+    assert_eq!(firewall_spec(&spec).len(), 101);
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[test]
+fn load_dispatches_spec_then_grammar_then_module_as_the_canonical_loader_does() {
+    let load = |value: Value| entry(json!({"name": "n", "languageId": "n", "load": value})).load();
+    assert_eq!(
+        load(json!({"spec": "g.json", "module": "x"})),
+        Load::Spec(SpecSource::File("g.json".into()))
+    );
+    assert_eq!(
+        load(json!({"spec": {"rule": {}}, "grammar": "g.abnf"})),
+        Load::Spec(SpecSource::Inline(json!({"rule": {}})))
+    );
+    assert_eq!(
+        load(json!({"spec": null, "grammar": "g.abnf", "module": "x"})),
+        Load::Grammar("g.abnf".into())
+    );
+    assert_eq!(
+        load(json!({"grammar": null, "module": "m", "extra": 1})),
+        Load::Module("m".into())
+    );
+    assert_eq!(load(json!({})), Load::Module(String::new()));
+    assert_eq!(load(json!({"module": null})), Load::Module(String::new()));
+    // An entry with no load at all is its own module.
+    assert_eq!(
+        entry(json!({"name": "n", "languageId": "n"})).load(),
+        Load::Module("n".into())
+    );
+    // A load that is not an object, or a lane that is not a string, is
+    // refused with the field named.
+    for value in [
+        json!("g.json"),
+        json!([]),
+        json!({"grammar": 1}),
+        json!({"module": []}),
+    ] {
+        let error =
+            serde_json::from_value::<Entry>(json!({"name": "n", "languageId": "n", "load": value}))
+                .unwrap_err();
+        assert!(
+            error.to_string().contains("invalid value"),
+            "{value}: {error}"
+        );
+    }
+}
+
+#[test]
 fn l2_a_spec_file_that_is_not_json_is_refused() {
     let dir = temp_dir("notjson");
     fs::write(dir.join("g.json"), "{ nope").unwrap();
@@ -747,6 +845,8 @@ fn l3_without_the_dialects_feature_a_grammar_is_refused_as_not_compiled_in() {
 #[cfg(feature = "dialects")]
 mod dialects {
     use super::*;
+    use std::time::{Duration, Instant};
+    use tabnas_lsp::loaders::MAX_REPETITION_BOUND;
 
     #[test]
     fn l3_compiles_each_dialect_through_its_own_crate() {
@@ -797,6 +897,51 @@ mod dialects {
         fs::write(dir.join("bad.abnf"), "= = =\n").unwrap();
         let error = refused(Loader::new().make_instance(&grammar_entry("bad.abnf", &dir)));
         assert!(!error.message.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn l3_a_count_past_the_repetition_cap_is_refused_before_the_compile() {
+        let dir = temp_dir("l3r");
+        let count = MAX_REPETITION_BOUND + 1;
+        fs::write(dir.join("wide.abnf"), format!("top = 0*{count}\"x\"\n")).unwrap();
+        let started = Instant::now();
+        let error = refused(Loader::new().make_instance(&grammar_entry("wide.abnf", &dir)));
+        assert!(
+            error
+                .message
+                .contains(&format!("{count} times, more than {MAX_REPETITION_BOUND}")),
+            "{error}"
+        );
+        // Refused by the scan, not by a compile: at the cap the compile
+        // takes seconds in a debug build.
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn l3_a_compile_past_its_budget_refuses_the_entry() {
+        let dir = temp_dir("l3b");
+        fs::write(
+            dir.join("slow.abnf"),
+            format!("top = 0*{MAX_REPETITION_BOUND}\"x\"\n"),
+        )
+        .unwrap();
+        let loader = Loader::new().with_compile_budget(Some(Duration::from_millis(1)));
+        let error = refused(loader.make_instance(&grammar_entry("slow.abnf", &dir)));
+        assert!(
+            error.message.contains("did not compile within 1 ms"),
+            "{error}"
+        );
+        // Without a budget the same grammar compiles.
+        let loader = Loader::new().with_compile_budget(None);
+        assert!(loader
+            .make_instance(&grammar_entry("slow.abnf", &dir))
+            .is_ok());
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -69,6 +69,21 @@
 //!   `@tabnas/gbnf` do not, so their converted spec keeps an empty
 //!   `ref` bag and the firewall refuses every `.ebnf` and `.gbnf` file:
 //!   reported as a TypeScript defect rather than reproduced.
+//! - The builtin set is asked of the engine (above), which costs a bare
+//!   engine per name where TypeScript reads a table, so the answers are
+//!   remembered for the process and the scan of alt function positions
+//!   stops past a hundred findings as the options scan
+//!   does; TypeScript lists every unknown reference of a spec it
+//!   refuses either way.
+//! - The JSON reader stops at 128 nested levels, above
+//!   [`MAX_GRAMMAR_DEPTH`], where `JSON.parse` reads any depth. A spec
+//!   file nested past the reader's limit gets the firewall's nesting
+//!   refusal, as it would in TypeScript; a workspace manifest nested
+//!   past it is refused whole, as any manifest the reader cannot read
+//!   is, where TypeScript would serve its other entries. The reader
+//!   also refuses a number outside the range of a double, which
+//!   `JSON.parse` reads as infinity: such a file is named as not JSON
+//!   rather than by the firewall's schema-version refusal.
 //!
 //! Hot reload is the server's: a changed grammar file names the entries
 //! to rebuild ([`watched_file`], [`crate::registry::Router::reloaded_by`]),
@@ -76,12 +91,14 @@
 //! again, since the loader caches nothing and re-reads every file at
 //! every make.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::time::Duration;
 
 use serde_json::{Map, Value};
 use tabnas::grammar::BUILTIN_SCHEMA_VERSION;
@@ -99,8 +116,32 @@ pub const MAX_GRAMMAR_ALTS: usize = 10_000;
 pub const MAX_GRAMMAR_DEPTH: usize = 100;
 pub const MAX_GRAMMAR_BYTES: u64 = 1_000_000;
 
+/// The largest count a counted repetition in L3 grammar text may name
+/// (`m*n` and `n` in ABNF, `{m,n}` and `{n}` in GBNF), and the largest
+/// sum of such counts in one grammar. The dialect compilers unroll a
+/// count into about twice that many rules, at a cost that grows with the
+/// square of the count: 512 takes a second or two in a debug build, and
+/// anything past about 2,500 fails [`MAX_GRAMMAR_RULES`] after a compile
+/// of minutes. Both are refused before the compile
+/// ([`check_repetition_bounds`]); a count of 0 or 1 unrolls nothing and
+/// is not summed. TypeScript compiles any count.
+pub const MAX_REPETITION_BOUND: u64 = 512;
+pub const MAX_REPETITION_TOTAL: u64 = 2048;
+
+/// How long an L3 compile may run before its entry is refused
+/// ([`Loader::with_compile_budget`]). The compile runs on a thread of
+/// its own, so the server's loop, which builds instances between
+/// messages, answers on; TypeScript compiles on its loop, unbounded.
+pub const DEFAULT_COMPILE_BUDGET: Duration = Duration::from_secs(10);
+
+/// The stack of the compile thread: the dialect compilers recurse over
+/// a grammar's nesting, and the main thread's 8 MiB is what they had.
+const COMPILE_STACK_BYTES: usize = 16 << 20;
+
 /// The options scan stops collecting once it holds more than this many
-/// findings (`100 < out.length` in TypeScript).
+/// findings (`100 < out.length` in TypeScript), and so does the scan of
+/// alt function positions here (TypeScript's lists every one: a
+/// departure on a spec already refused).
 const MAX_OPTIONS_ISSUES: usize = 100;
 
 /// Keys refused anywhere in a spec.
@@ -280,22 +321,43 @@ pub fn firewall_spec(spec: &Value) -> Vec<Issue> {
 }
 
 /// A JSON number as JavaScript prints it where the two can differ on a
-/// plausible input: an integral float (`6.0`) prints as an integer, and
-/// negative zero as `0`.
+/// plausible input. JavaScript holds every number as a double, so an
+/// integer above 2^53 prints as the double it became
+/// (`18446744073709551615` as `18446744073709552000`), an integral
+/// float (`6.0`) as an integer, and negative zero as `0`. Below 1e21
+/// `String(n)` is the shortest round trip with no exponent, which is
+/// what `Display` for `f64` prints.
 fn js_number(number: &serde_json::Number) -> String {
     match number.as_f64() {
-        Some(value)
-            if !number.is_u64()
-                && !number.is_i64()
-                && value.is_finite()
-                && value.fract() == 0.0
-                && value.abs() < 1e21 =>
-        {
+        Some(value) if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e21 => {
             // `+ 0.0` turns -0 into 0, as `String(-0)` does.
-            format!("{:.0}", value + 0.0)
+            format!("{}", value + 0.0)
         }
         _ => number.to_string(),
     }
+}
+
+/// The firewall's refusal of nesting past [`MAX_GRAMMAR_DEPTH`].
+fn nesting_refusal() -> String {
+    format!(
+        "grammar nesting deeper than {MAX_GRAMMAR_DEPTH} levels: refused (no real \
+         GrammarSpec is this deep, and the scans must not be recursed off the stack)"
+    )
+}
+
+/// A spec file the JSON reader refused. `serde_json` stops at 128
+/// nested levels, above [`MAX_GRAMMAR_DEPTH`], where `JSON.parse` reads
+/// any depth and the firewall refuses it: so a file nested past the
+/// reader's limit gets the firewall's refusal, as it would in
+/// TypeScript, and any other unreadable file is named as not JSON.
+fn spec_read_error(file: &str, entry: &Entry, error: serde_json::Error) -> LoadError {
+    if error.is_syntax() && error.to_string().starts_with("recursion limit exceeded") {
+        return LoadError::with_issues(
+            format!("grammar for {} failed the firewall", entry.language_id()),
+            vec![issue("$", nesting_refusal())],
+        );
+    }
+    LoadError::new(format!("grammar file {file} is not valid JSON: {error}"))
 }
 
 /// Every key and index of the tree, depth first, refusing the
@@ -305,13 +367,7 @@ fn scan_forbidden_keys(value: &Value, path: &str, out: &mut Vec<Issue>, depth: u
         return;
     }
     if depth > MAX_GRAMMAR_DEPTH {
-        out.push(issue(
-            path,
-            format!(
-                "grammar nesting deeper than {MAX_GRAMMAR_DEPTH} levels: refused (no real \
-                 GrammarSpec is this deep, and the scans must not be recursed off the stack)"
-            ),
-        ));
+        out.push(issue(path, nesting_refusal()));
         return;
     }
     match value {
@@ -402,11 +458,17 @@ fn scan_options_refs(
 }
 
 /// In alt function positions EVERY `@`-string is a reference, so the
-/// rule is strict: builtin or refused.
+/// rule is strict: builtin or refused. Past [`MAX_OPTIONS_ISSUES`]
+/// findings the scan stops, as the options scan does: a spec with more
+/// unknown references than that is refused either way, and each
+/// unknown name costs an engine probe.
 fn scan_alt_refs(alt: &Value, path: &str, out: &mut Vec<Issue>, builtins: &mut BuiltinRefs) {
     let Value::Object(alt) = alt else {
         return;
     };
+    if out.len() > MAX_OPTIONS_ISSUES {
+        return;
+    }
     for key in ALT_FUNC_KEYS {
         match alt.get(key) {
             Some(Value::String(reference)) if reference.starts_with('@') => {
@@ -416,6 +478,9 @@ fn scan_alt_refs(alt: &Value, path: &str, out: &mut Vec<Issue>, builtins: &mut B
             }
             Some(Value::Array(items)) if key == "a" => {
                 for (i, item) in items.iter().enumerate() {
+                    if out.len() > MAX_OPTIONS_ISSUES {
+                        return;
+                    }
                     if let Value::String(reference) = item {
                         if reference.starts_with('@') && !builtins.is_builtin(reference) {
                             out.push(bad_ref(reference, format!("{path}.a[{i}]")));
@@ -459,35 +524,40 @@ impl BuiltinRefs {
     }
 }
 
+/// How many names the process remembers the engine's answer for. The
+/// builtins are a bounded set; the refused names are whatever a spec
+/// carries, so they are remembered up to this many and probed again
+/// past it.
+const MAX_BUILTIN_MEMO: usize = 4096;
+
 /// Whether `name` is one of the engine's builtin function references
 /// (`isBuiltin` in `ts/src/loaders.js`: `$`-suffixed and in the engine's
 /// `BUILTIN_REFS`). Answered by the engine: a bare instance, with no
 /// references registered, accepts the name as an alternate's action or
-/// as its condition. Accepted names are remembered for the process;
-/// they are the engine's builtins, so that set is bounded.
+/// as its condition. The answer is remembered for the process either
+/// way, up to `MAX_BUILTIN_MEMO` names, so a probe is paid once per
+/// name, not once per firewall run.
 pub fn is_builtin_ref(name: &str) -> bool {
     if !name.starts_with('@') || !name.ends_with('$') {
         return false;
     }
-    static ACCEPTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    let accepted = ACCEPTED.get_or_init(Mutex::default);
-    if accepted
+    static KNOWN: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+    let known = KNOWN.get_or_init(Mutex::default);
+    if let Some(&answer) = known
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .contains(name)
+        .get(name)
     {
-        return true;
+        return answer;
     }
-    let known = ["a", "c"]
+    let answer = ["a", "c"]
         .iter()
         .any(|slot| bare_engine_accepts(slot, name));
-    if known {
-        accepted
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(name.to_string());
+    let mut known = known.lock().unwrap_or_else(PoisonError::into_inner);
+    if answer || known.len() < MAX_BUILTIN_MEMO {
+        known.insert(name.to_string(), answer);
     }
-    known
+    answer
 }
 
 /// Whether a bare engine installs a one-alternate rule naming `name` in
@@ -776,6 +846,131 @@ pub fn compile_grammar_text(file: &Path, src: &str) -> Result<Value, LoadError> 
     }
 }
 
+/// Refuse the repetition counts of L3 grammar text past
+/// [`MAX_REPETITION_BOUND`] and [`MAX_REPETITION_TOTAL`] before the
+/// compile. The text is read with the dialect's comments and strings
+/// skipped (and ABNF's prose and `%` values, GBNF's character classes),
+/// and every remaining run of digits that does not continue a name is a
+/// count: ABNF's `m*n`, `*n`, `m*` and `n` (`1*4HEXDIG`, `2DIGIT`),
+/// GBNF's `{m,n}` and `{n}`. EBNF has no counted repetition. A run past
+/// `u64` counts as past the bound.
+pub fn check_repetition_bounds(dialect: Dialect, src: &str) -> Result<(), LoadError> {
+    let comment = match dialect {
+        Dialect::Abnf => b';',
+        Dialect::Gbnf => b'#',
+        Dialect::Ebnf => return Ok(()),
+    };
+    let abnf = dialect == Dialect::Abnf;
+    let bytes = src.as_bytes();
+    let (mut i, mut total, mut previous) = (0, 0u64, b' ');
+    while i < bytes.len() {
+        let c = bytes[i];
+        // A span read past: a comment to the line's end, a quoted string
+        // or class to its closer (escapes kept whole), ABNF prose, or an
+        // ABNF numeric value with its range and concatenation.
+        let skipped = if c == comment {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            true
+        } else if c == b'"' || c == b'\'' || (abnf && c == b'<') || (!abnf && c == b'[') {
+            let close = match c {
+                b'<' => b'>',
+                b'[' => b']',
+                _ => c,
+            };
+            i += 1;
+            while i < bytes.len() && bytes[i] != close {
+                i += if bytes[i] == b'\\' { 2 } else { 1 };
+            }
+            i += 1;
+            true
+        } else if abnf && c == b'%' {
+            i += 1;
+            if i < bytes.len() && matches!(bytes[i], b'b' | b'd' | b'x' | b'B' | b'D' | b'X') {
+                i += 1;
+                while i < bytes.len()
+                    && (bytes[i].is_ascii_hexdigit() || matches!(bytes[i], b'.' | b'-'))
+                {
+                    i += 1;
+                }
+            }
+            true
+        } else {
+            false
+        };
+        if skipped {
+            previous = b' ';
+            continue;
+        }
+        if c.is_ascii_digit()
+            && !(previous.is_ascii_alphanumeric() || matches!(previous, b'_' | b'-'))
+        {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            let count = src[start..i].parse::<u64>().unwrap_or(u64::MAX);
+            if count > MAX_REPETITION_BOUND {
+                return Err(LoadError::new(format!(
+                    "grammar repeats an element {count} times, more than \
+                     {MAX_REPETITION_BOUND}: refused before the compile, which unrolls a \
+                     count into that many rules at a cost that grows with its square"
+                )));
+            }
+            // A count of 0 or 1 unrolls nothing (`1*x` is one copy and
+            // the loop), so only larger counts add to the total.
+            if count > 1 {
+                total = total.saturating_add(count);
+            }
+            if total > MAX_REPETITION_TOTAL {
+                return Err(LoadError::new(format!(
+                    "grammar repeats elements more than {MAX_REPETITION_TOTAL} times in all: \
+                     refused before the compile, which unrolls every count into rules"
+                )));
+            }
+            previous = b'0';
+            continue;
+        }
+        previous = c;
+        i += 1;
+    }
+    Ok(())
+}
+
+/// [`compile_grammar_text`] within a budget, on a thread of its own: a
+/// compile the budget ends refuses its entry, and the server's loop,
+/// which builds instances between messages, answers on. The compile
+/// cannot be interrupted and runs on to its end, which the repetition
+/// caps above keep short. Without a budget the compile runs here.
+fn compile_within(path: &Path, src: &str, budget: Option<Duration>) -> Result<Value, LoadError> {
+    let Some(budget) = budget else {
+        return compile_grammar_text(path, src);
+    };
+    let (sender, receiver) = mpsc::channel();
+    let (owned_path, owned_src) = (path.to_path_buf(), src.to_string());
+    std::thread::Builder::new()
+        .name("tabnas-lsp-compile".into())
+        .stack_size(COMPILE_STACK_BYTES)
+        .spawn(move || {
+            let _ = sender.send(compile_grammar_text(&owned_path, &owned_src));
+        })
+        .map_err(|error| LoadError::new(format!("grammar compile thread: {error}")))?;
+    match receiver.recv_timeout(budget) {
+        Ok(result) => result,
+        Err(RecvTimeoutError::Timeout) => Err(LoadError::new(format!(
+            "grammar {} did not compile within {} ms: refused (the compile budget bounds how \
+             long a grammar file can hold the server; the compile runs on to its end)",
+            path.display(),
+            budget.as_millis()
+        ))),
+        Err(RecvTimeoutError::Disconnected) => Err(LoadError::new(format!(
+            "grammar {} compile ended without a result: the compiler panicked",
+            path.display()
+        ))),
+    }
+}
+
 /// The versions of the dialect compilers built in.
 #[cfg(feature = "dialects")]
 pub fn dialect_versions() -> [(Dialect, &'static str); 3] {
@@ -796,7 +991,7 @@ pub type Factory = Arc<dyn Fn() -> Tabnas + Send + Sync>;
 
 /// The binary's `MakeInstance` (`makeLoader` in TypeScript): the linked
 /// grammars, the trust setting, and the dispatch on an entry's `load`.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Loader {
     linked: HashMap<String, Factory>,
     /// Shared by every clone, and read at make time: the server learns
@@ -804,6 +999,19 @@ pub struct Loader {
     /// handed out was built (the TypeScript loader reads `opts.trust`
     /// late for the same reason).
     trust_workspace_modules: Arc<AtomicBool>,
+    /// How long an L3 compile may run ([`DEFAULT_COMPILE_BUDGET`]);
+    /// `None` runs it unbounded on the caller's thread.
+    compile_budget: Option<Duration>,
+}
+
+impl Default for Loader {
+    fn default() -> Self {
+        Self {
+            linked: HashMap::new(),
+            trust_workspace_modules: Arc::default(),
+            compile_budget: Some(DEFAULT_COMPILE_BUDGET),
+        }
+    }
 }
 
 impl Loader {
@@ -811,6 +1019,14 @@ impl Loader {
     /// only.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The time an L3 compile may take ([`DEFAULT_COMPILE_BUDGET`] by
+    /// default); `None` for no budget, the compile on the caller's
+    /// thread.
+    pub fn with_compile_budget(mut self, budget: Option<Duration>) -> Self {
+        self.compile_budget = budget;
+        self
     }
 
     /// Register a linked grammar under its package name (`@tabnas/json`)
@@ -908,6 +1124,8 @@ impl Loader {
         match entry.load() {
             // `null != load.spec` fails for an explicit null, and the
             // canonical dispatch falls through to the entry's module.
+            // `Load::from_value` reads `{"spec": null}` that way already;
+            // a host may still build the value by hand.
             Load::Spec(SpecSource::Inline(Value::Null)) => {
                 self.module(entry, &entry.name, &options)
             }
@@ -915,15 +1133,15 @@ impl Loader {
             Load::Spec(SpecSource::File(file)) => {
                 let path = resolve_sandboxed(&file, entry.dir.as_deref())?;
                 let text = read_capped(&path, entry)?;
-                let spec = serde_json::from_str(&text).map_err(|error| {
-                    LoadError::new(format!("grammar file {file} is not valid JSON: {error}"))
-                })?;
+                let spec = serde_json::from_str(&text)
+                    .map_err(|error| spec_read_error(&file, entry, error))?;
                 install_spec(spec, entry, &options, self)
             }
             Load::Grammar(file) => {
                 let path = resolve_sandboxed(&file, entry.dir.as_deref())?;
                 let src = read_capped(&path, entry)?;
-                let spec = compile_grammar_text(&path, &src)?;
+                check_repetition_bounds(Dialect::of_file(&path)?, &src)?;
+                let spec = compile_within(&path, &src, self.compile_budget)?;
                 install_spec(spec, entry, &options, self)
             }
             Load::Module(module) => {
@@ -1059,12 +1277,75 @@ mod tests {
     }
 
     #[test]
+    fn repetition_counts_are_capped_before_the_compile() {
+        // Counts in every ABNF spelling, and digits that are not counts:
+        // in a comment, a string, prose, a numeric value, a rule name.
+        let ok = "hosts = *( entry %x0A ) [ entry ] ; up to 1*65535 octets\n\
+                  entry = 1*4HEXDIG 2DIGIT %d0-1114111 %x41-5A.7F \"12345\" <prose 99999> rule-9\n\
+                  rule-9 = 3*5( \"a\" ) 512\"b\"\n";
+        assert!(check_repetition_bounds(Dialect::Abnf, ok).is_ok());
+        let over = format!("a = 0*{}\"x\"\n", MAX_REPETITION_BOUND + 1);
+        let error = check_repetition_bounds(Dialect::Abnf, &over).unwrap_err();
+        assert!(
+            error.message.contains(&format!(
+                "{} times, more than {MAX_REPETITION_BOUND}",
+                MAX_REPETITION_BOUND + 1
+            )),
+            "{error}"
+        );
+        let mut total = String::new();
+        for i in 0..5 {
+            total.push_str(&format!("r{i} = 0*{MAX_REPETITION_BOUND}\"x\"\n"));
+        }
+        let error = check_repetition_bounds(Dialect::Abnf, &total).unwrap_err();
+        assert!(
+            error
+                .message
+                .contains(&format!("more than {MAX_REPETITION_TOTAL} times in all")),
+            "{error}"
+        );
+        // Counts of 0 and 1 unroll nothing and never add up.
+        let mut ones = String::new();
+        for i in 0..5000 {
+            ones.push_str(&format!("r{i} = 1*\"a\" 0*1\"b\"\n"));
+        }
+        assert!(check_repetition_bounds(Dialect::Abnf, &ones).is_ok());
+        // A run of digits no integer holds is past the bound.
+        assert!(
+            check_repetition_bounds(Dialect::Abnf, "a = 99999999999999999999999\"x\"\n").is_err()
+        );
+        // GBNF: braces carry the counts; classes and comments do not.
+        assert!(
+            check_repetition_bounds(Dialect::Gbnf, "root ::= \"x\"{0,12} [0-9]+ # 1*99999\n")
+                .is_ok()
+        );
+        assert!(check_repetition_bounds(Dialect::Gbnf, "root ::= [0-9]{0,600}\n").is_err());
+        // EBNF has no counted repetition.
+        assert!(check_repetition_bounds(Dialect::Ebnf, "a ::= 'x' /* 99999 */ #x10FFFF\n").is_ok());
+    }
+
+    #[test]
     fn a_schema_version_prints_the_way_javascript_prints_it() {
         let number = |src: &str| serde_json::from_str::<serde_json::Number>(src).unwrap();
         assert_eq!(js_number(&number("999")), "999");
         assert_eq!(js_number(&number("6.0")), "6");
         assert_eq!(js_number(&number("6.5")), "6.5");
         assert_eq!(js_number(&number("-0.0")), "0");
+        // An integer above 2^53 is the double it became in JavaScript.
+        assert_eq!(
+            js_number(&number("18446744073709551615")),
+            "18446744073709552000"
+        );
+        assert_eq!(js_number(&number("9007199254740993")), "9007199254740992");
+        assert_eq!(
+            js_number(&number("18446744073709551616")),
+            "18446744073709552000"
+        );
+        assert_eq!(
+            js_number(&number("1.8446744073709552e19")),
+            "18446744073709552000"
+        );
+        assert_eq!(js_number(&number("-9007199254740993")), "-9007199254740992");
     }
 
     #[test]

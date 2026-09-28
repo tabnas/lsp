@@ -345,12 +345,80 @@ impl EntrySource {
 ///   serialized `GrammarSpec`, always through the firewall.
 /// - `{"grammar": "./my.abnf"}`, L3: BNF-dialect text, compiled to a
 ///   pure spec by its dialect's crate, then the L2 firewall.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+///
+/// Read as the canonical loader reads `load` ([`Load::from_value`]): a
+/// non-null `spec` first, else a non-null `grammar`, else the module,
+/// with any other key ignored.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Load {
     Module(String),
     Spec(SpecSource),
     Grammar(String),
+}
+
+impl Load {
+    /// The lane a `load` object names, in the canonical order
+    /// (`ts/src/loaders.js`: `null != load.spec`, then
+    /// `null != load.grammar`, then `load.module`): a non-null `spec` is
+    /// L2, a file when it is a string and inline otherwise; else a
+    /// non-null `grammar` string is L3; else L1, the module `module`
+    /// names, or the entry's own name (an empty module here) when it is
+    /// absent or null. Other keys are ignored. A `load` that is not an
+    /// object, or a `grammar` or `module` that is not a string, is
+    /// refused, where the canonical loader would read the value as a
+    /// path and fail later.
+    pub fn from_value(value: serde_json::Value) -> Result<Load, String> {
+        use serde_json::Value;
+        let Value::Object(mut fields) = value else {
+            return Err(format!(
+                "invalid value: {}, expected an object naming spec, grammar or module",
+                json_kind(&value)
+            ));
+        };
+        match fields.remove("spec") {
+            None | Some(Value::Null) => {}
+            Some(Value::String(file)) => return Ok(Load::Spec(SpecSource::File(file))),
+            Some(inline) => return Ok(Load::Spec(SpecSource::Inline(inline))),
+        }
+        match fields.remove("grammar") {
+            None | Some(Value::Null) => {}
+            Some(Value::String(file)) => return Ok(Load::Grammar(file)),
+            Some(other) => {
+                return Err(format!(
+                    "invalid value: {}, expected a string for grammar",
+                    json_kind(&other)
+                ))
+            }
+        }
+        match fields.remove("module") {
+            None | Some(Value::Null) => Ok(Load::Module(String::new())),
+            Some(Value::String(name)) => Ok(Load::Module(name)),
+            Some(other) => Err(format!(
+                "invalid value: {}, expected a string for module",
+                json_kind(&other)
+            )),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Load {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Load::from_value(value).map_err(serde::de::Error::custom)
+    }
+}
+
+/// A JSON value's kind, for a message.
+fn json_kind(value: &serde_json::Value) -> &'static str {
+    use serde_json::Value;
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "map",
+    }
 }
 
 /// An L2 spec: a file path (relative to the entry's sandbox folder) or

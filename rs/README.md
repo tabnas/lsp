@@ -41,6 +41,10 @@ in one place, and a thin binary. Every part is complete:
 
 - `dialects`: L3 grammar files. Links `tabnas-abnf`, `tabnas-ebnf` and
   `tabnas-gbnf` (three crates, three dialects, dispatched by extension).
+  A counted repetition past `MAX_REPETITION_BOUND` is refused before
+  the compile, and the compile runs under the loader's budget
+  (`Loader::with_compile_budget`, 10 s by default) on a thread of its
+  own, so a workspace grammar file cannot hold the server.
 - `fleet`: the bundled grammars linked into the binary and registered
   by package name (`loaders::fleet`): csv, feed, ini, json, json5,
   jsonc, jsonic, jsonl, toml, xml, yaml, zon. The library never needs

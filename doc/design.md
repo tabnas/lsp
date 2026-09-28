@@ -389,7 +389,13 @@ resolution is workspace-sandboxed and off by default.
 for the ReDoS story** (§14 tracks both): parse budgets/cancellation and
 document-size caps. The Rust server has both as configuration
 (`Config::max_document_bytes`, and `Config::parse_deadline` through the
-engine's budget hook, reported as `cancel`). Serialized
+engine's budget hook, reported as `cancel`), and bounds the L3 compile
+as well, which every server runs on its message loop: a counted
+repetition past `MAX_REPETITION_BOUND` (or counts past
+`MAX_REPETITION_TOTAL` in all) is refused before the compile, since the
+compilers unroll a count into rules at a cost that grows with its
+square, and the compile runs on its own thread under
+`Loader::with_compile_budget` (10 s by default). Serialized
 regexes are legal grammar data and pass the `ref` scan by design, so
 until the engine's `parse.budget` hook is wired here, a hostile
 workspace grammar's regex is bounded only by the caps above — which

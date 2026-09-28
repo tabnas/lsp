@@ -324,10 +324,22 @@ fn message_of(value: Value) -> Result<Message, RpcError> {
             message: kind.into(),
         });
     }
-    let id = value
-        .get("id")
-        .filter(|id| id.is_string() || id.is_number())
-        .cloned();
+    // A request's id is a string or a number, and a response's may be
+    // null (the id a ParseError response carries). Anything else is not
+    // a message, as `vscode-jsonrpc` reads it, so it is refused under a
+    // null id rather than answered under the id it names.
+    let id = value.get("id").cloned();
+    match &id {
+        None | Some(Value::String(_) | Value::Number(_)) => {}
+        Some(Value::Null) if value.get("method").is_none() => {}
+        Some(_) => {
+            return Err(RpcError::Invalid {
+                id: None,
+                message: "id must be a string or a number".into(),
+            });
+        }
+    }
+    let id = id.filter(|id| id.is_string() || id.is_number());
     serde_json::from_value(value).map_err(|error| RpcError::Invalid {
         id,
         message: error.to_string(),
@@ -617,6 +629,12 @@ mod tests {
             ("42", Value::Null),
             (r#"{"id":5,"method":7}"#, json!(5)),
             (r#"{"id":"a","params":{},"error":"nope"}"#, json!("a")),
+            // An id that is not a string or a number names no request,
+            // so the refusal carries a null id, as vscode-jsonrpc's does.
+            (r#"{"id":true,"method":"tabnas/status"}"#, Value::Null),
+            (r#"{"id":{"k":1},"method":"tabnas/status"}"#, Value::Null),
+            (r#"{"id":[1],"method":"tabnas/status"}"#, Value::Null),
+            (r#"{"id":null,"method":"tabnas/status"}"#, Value::Null),
         ] {
             let error = read_message(&mut reader(&frame(body))).unwrap_err();
             assert!(matches!(error, RpcError::Invalid { .. }), "{body}: {error}");
@@ -624,6 +642,12 @@ mod tests {
             assert_eq!(response.id, Some(id), "{body}");
             assert_eq!(response.error.unwrap().code, INVALID_REQUEST, "{body}");
         }
+        // A client's error response to a frame it could not parse has a
+        // null id, and is a response.
+        let body = r#"{"id":null,"error":{"code":-32700,"message":"parse error"}}"#;
+        let message = read_message(&mut reader(&frame(body))).unwrap().unwrap();
+        assert!(message.is_response());
+        assert_eq!(message.id, Some(Value::Null));
     }
 
     #[test]
