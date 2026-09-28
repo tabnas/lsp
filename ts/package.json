@@ -47,6 +47,6 @@
     "@tabnas/parser": ">=0"
   },
   "devDependencies": {
-    "@tabnas/parser": "^0.12.4"
+    "@tabnas/parser": "^0.12.5"
   }
 }

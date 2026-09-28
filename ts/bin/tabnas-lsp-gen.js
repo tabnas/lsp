@@ -3,9 +3,10 @@
 'use strict'
 
 // tabnas-lsp-gen: generate a standalone single-language LSP server —
-// Node package or Go module — plus editor plugins, from one grammar
-// (design §7). A deliberately separate bin from tabnas-lsp: a
-// generator argument bug must never break editor launches.
+// Node package, Go module or Rust crate — plus editor plugins, from
+// one grammar (design §7). A deliberately separate bin from
+// tabnas-lsp: a generator argument bug must never break editor
+// launches.
 
 const { generate, ALL_EDITORS } = require('../src/generate')
 
@@ -21,7 +22,7 @@ options:
   --out <dir>              target directory (required)
   --language-id <id>       served language id (derived when omitted)
   --extensions <.a,.b>     file extensions (default: .<language-id>)
-  --runtime <node|go>      server runtime (default: node)
+  --runtime <node|go|rust> server runtime (default: node)
   --editors <list|none>    ${ALL_EDITORS.join(',')} (default: all)
   --unified                editor plugins for the whole bundled
                            registry over tabnas-lsp itself (no server)
@@ -36,10 +37,23 @@ go runtime:
   --go-lsp-version <vX.Y.Z>   pin the github.com/tabnas/lsp/go require
   --go-parser-version <vX.Y.Z> pin the github.com/tabnas/parser/go require
   --go-replace <mod=dir>      replace directive for local dev (repeatable)
+
+rust runtime:
+  --rust-crate <name>         generated package name (default: <language-id>-lsp)
+  --rust-lsp-rev <commit>     pin tabnas-lsp (otherwise the first build takes
+                              the default branch and Cargo.lock records it)
+  --rust-parser-rev <commit>  pin the engine the same way
+  --rust-plugin <crate>       Rust grammar crate (closure/imperative grammars)
+  --rust-plugin-git <url>     its repository (default: github.com/tabnas/<name>
+                              for a crate named tabnas-<name>)
+  --rust-plugin-rev <commit>  pin it
+  --rust-plugin-fn <path>     its constructor (default: make)
+  --rust-path <crate=dir>     a local checkout in place of a git source, for
+                              local dev (repeatable)
 `
 
 function parseArgs(argv) {
-  const opts = { input: {}, goReplace: [] }
+  const opts = { input: {}, goReplace: [], rustPath: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     const next = () => {
@@ -71,6 +85,14 @@ function parseArgs(argv) {
       case '--go-lsp-version': opts.goLspVersion = next(); break
       case '--go-parser-version': opts.goParserVersion = next(); break
       case '--go-replace': opts.goReplace.push(next()); break
+      case '--rust-crate': opts.rustCrate = next(); break
+      case '--rust-lsp-rev': opts.rustLspRev = next(); break
+      case '--rust-parser-rev': opts.rustParserRev = next(); break
+      case '--rust-plugin': opts.rustPlugin = next(); break
+      case '--rust-plugin-git': opts.rustPluginGit = next(); break
+      case '--rust-plugin-rev': opts.rustPluginRev = next(); break
+      case '--rust-plugin-fn': opts.rustPluginFn = next(); break
+      case '--rust-path': opts.rustPath.push(next()); break
       case '--help': case '-h':
         console.log(USAGE)
         process.exit(0)

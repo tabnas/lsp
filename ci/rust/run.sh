@@ -5,23 +5,41 @@
 # is the full gate.
 #
 # The engine is a PATH DEPENDENCY on the sibling checkout
-# (rs/Cargo.toml: `tabnas = { path = "../../parser/rs" }`), and the crate
-# is unpublished, so there is no registry version to fall back on. Clone
-# https://github.com/tabnas/parser next to this repo before running; the
-# ci-go job resolves the same sibling through go.work, so the two ports
-# are measured against the same engine.
+# (rs/Cargo.toml: `tabnas = { path = "../../parser/rs" }`), and so are the
+# BNF-dialect compilers behind the `dialects` feature and the fleet
+# grammars behind `fleet`. None of these crates is published, so there is
+# no registry version to fall back on, and cargo reads EVERY path
+# dependency's manifest to resolve the graph, features on or off, so all
+# of them have to be present to build at all. Clone them next to this
+# repo before running (the ci-rust job clones the same list); the ci-go
+# job resolves the engine through go.work, so the two ports are measured
+# against the same engine.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-ENGINE="$ROOT/../parser/rs"
-
-if [[ ! -f "$ENGINE/Cargo.toml" ]]; then
-  echo "no engine checkout at $ENGINE" >&2
-  echo "clone https://github.com/tabnas/parser as a sibling of $(basename "$ROOT")" >&2
-  exit 1
-fi
 
 cd "$ROOT/rs"
+
+# Every sibling rs/Cargo.toml names by path, read from the manifest so
+# this list cannot drift from it, checked before cargo fails on one with
+# a less useful message. Their OWN path dependencies (bnf under the
+# compilers, json under jsonic, hoover under ini, xml under feed) are read
+# by cargo the same way; cargo names a missing one, and the workflow's
+# clone list carries them.
+SIBLINGS=$(awk '
+  match($0, /path = "\.\.\/\.\.\/[^\/"]+\/rs"/) {
+    s = substr($0, RSTART, RLENGTH)
+    sub(/^path = "\.\.\/\.\.\//, "", s); sub(/\/rs"$/, "", s)
+    print s
+  }
+' Cargo.toml | sort -u)
+for SIBLING in $SIBLINGS; do
+  if [[ ! -f "$ROOT/../$SIBLING/rs/Cargo.toml" ]]; then
+    echo "no $SIBLING checkout at $ROOT/../$SIBLING/rs" >&2
+    echo "clone https://github.com/tabnas/$SIBLING as a sibling of $(basename "$ROOT")" >&2
+    exit 1
+  fi
+done
 
 # Run through the MSRV toolchain when one is available. The workflow
 # installs it explicitly, but a contributor running this script gets
@@ -65,9 +83,9 @@ fi
 # check and ships a stale lock. This has to come first -- after a cargo
 # command the lock has already been fixed up and the check can never fail.
 #
-# Only this crate's entry is asserted. The engine's entry legitimately
-# moves whenever the sibling checkout does, which is the same reason
-# blanket `--locked` is wrong here.
+# Only this crate's entry is asserted. A sibling crate's entry legitimately
+# moves whenever its checkout does, which is the same reason blanket
+# `--locked` is wrong here.
 CRATE=$(awk -F'"' '/^name = /{print $2; exit}' Cargo.toml)
 WANT=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
 HAVE=$(awk -v c="$CRATE" -F'"' '
@@ -88,18 +106,19 @@ fi
 # runner and everything goes green.
 #
 # So the resolution is compared before and after cargo runs -- but only the
-# part this crate's own manifest decides. The engine is resolved from a
-# sibling checkout of MAIN, and whenever that checkout adds, removes or
-# re-pins one of ITS dependencies, cargo legitimately rewrites the engine's
-# stanza and the transitive stanzas beneath it. A comparison of the whole
-# lock would then fail every pull request here, Rust or not, until someone
-# re-committed rs/Cargo.lock for another repository's change. What is
-# compared is therefore the header, this crate's own stanza (its dependency
-# list) and the stanzas of its DIRECT dependencies (their versions and
-# sources), with the engine's version and dependency list masked: exactly
-# the lines a change to rs/Cargo.toml moves, and none the sibling moves.
-# A shared dependency the engine drags to another version still shows,
-# because that is this crate's own resolution changing too.
+# part this crate's own manifest decides. The engine and the other sibling
+# crates are resolved from checkouts of MAIN, and whenever one of those
+# checkouts bumps its version or adds, removes or re-pins one of ITS
+# dependencies, cargo legitimately rewrites that crate's stanza and the
+# transitive stanzas beneath it. A comparison of the whole lock would then
+# fail every pull request here, Rust or not, until someone re-committed
+# rs/Cargo.lock for another repository's change. What is compared is
+# therefore the header, this crate's own stanza (its dependency list) and
+# the stanzas of its DIRECT dependencies (their versions and sources),
+# with every PATH dependency's version and dependency list masked: exactly
+# the lines a change to rs/Cargo.toml moves, and none a sibling moves. A
+# shared registry dependency a sibling drags to another version still
+# shows, because that is this crate's own resolution changing too.
 DIRECT=$(awk '
   /^\[/ { section = $0 }
   section ~ /dependencies/ && /^[A-Za-z0-9_-]+[ \t]*=/ {
@@ -107,12 +126,23 @@ DIRECT=$(awk '
   }
 ' Cargo.toml | sort -u | tr '\n' ' ')
 
+# The direct dependencies declared with `path =`: the sibling crates,
+# whose versions this manifest does not decide.
+PATHDEPS=$(awk '
+  /^\[/ { section = $0 }
+  section ~ /dependencies/ && /^[A-Za-z0-9_-]+[ \t]*=.*path[ \t]*=/ {
+    split($0, parts, "="); gsub(/[ \t]/, "", parts[1]); print parts[1]
+  }
+' Cargo.toml | sort -u | tr '\n' ' ')
+
 lock_local_view() {
-  awk -v crate="$CRATE" -v direct="$DIRECT" '
+  awk -v crate="$CRATE" -v direct="$DIRECT" -v paths="$PATHDEPS" '
     BEGIN {
       n = split(direct, names, " ")
       for (i = 1; i <= n; i++) keep[names[i]] = 1
       keep[crate] = 1
+      n = split(paths, names, " ")
+      for (i = 1; i <= n; i++) sibling[names[i]] = 1
       keepit = 1            # the header before the first stanza
     }
     /^\[\[package\]\]$/ { name = ""; keepit = 0; indeps = 0; hold = $0; held = 1; next }
@@ -124,9 +154,9 @@ lock_local_view() {
       next
     }
     !keepit { next }
-    name == "tabnas" && /^version = / { print "version = \"<engine>\""; next }
-    name == "tabnas" && /^dependencies = \[/ { indeps = 1; print "dependencies = [<engine>]"; next }
-    name == "tabnas" && indeps { if ($0 ~ /^\]/) indeps = 0; next }
+    (name in sibling) && /^version = / { print "version = \"<sibling>\""; next }
+    (name in sibling) && /^dependencies = \[/ { indeps = 1; print "dependencies = [<sibling>]"; next }
+    (name in sibling) && indeps { if ($0 ~ /^\]/) indeps = 0; next }
     { print }
   ' "$1"
 }
@@ -139,15 +169,15 @@ trap 'if [ -f "$LOCK_BEFORE" ] && ! cmp -s "$LOCK_BEFORE" Cargo.lock; then cp "$
 
 # NOT `--locked`, deliberately, and this is the one place a fleet crate's
 # gate differs from the engine's own (parser ci/rust/run.sh does pass it).
-# Cargo.lock records the engine by version, and the engine is resolved
-# from a sibling checkout of MAIN. So the day parser bumps its crate
-# version, `--locked` here fails with "cannot update the lock file" on
-# every pull request in this repo, including ones that touch no Rust at
-# all -- a red build caused by another repository's release.
+# Cargo.lock records the engine and the other siblings by version, and
+# they are resolved from checkouts of MAIN. So the day one of them bumps
+# its crate version, `--locked` here fails with "cannot update the lock
+# file" on every pull request in this repo, including ones that touch no
+# Rust at all -- a red build caused by another repository's release.
 #
 # NOT `--all` on fmt either. cargo defines it as "all packages, and also
-# their local path-based dependencies", and the engine IS such a
-# dependency, so `--all` reaches into the sibling parser checkout: an
+# their local path-based dependencies", and every sibling IS such a
+# dependency, so `--all` reaches into the sibling checkouts: an
 # unformatted file over there fails this gate even when every file here
 # is clean.
 # Every phase below is a transient task, and AGENTS.md wants a line from

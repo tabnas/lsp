@@ -66,16 +66,17 @@ notes in the `admin` repo). Two products over one core:
   dynamically as plugin modules (L1), serialized `GrammarSpec` data
   (L2), or BNF-dialect text (L3) via workspace configuration.
 - **`tabnas-lsp-gen`** — generates standalone single-language servers
-  (Node package or Go module; the runtime follows where the grammar
-  can execute) plus editor plugins (VS Code, Neovim, Emacs, Sublime,
-  Helix, Kate, Zed scaffold). `--unified` regenerates this repo's own
-  [`editors/`](editors/).
+  (Node package, Go module or Rust crate; the runtime follows where
+  the grammar can execute) plus editor plugins (VS Code, Neovim,
+  Emacs, Sublime, Helix, Kate, Zed scaffold). `--unified` regenerates
+  this repo's own [`editors/`](editors/).
 
 Every feature derives from the engine contract that shipped for the
-LSP program (parser#94–#109, both runtimes): `parse.recover` /
-`ParseRecover` (multi-error diagnostics), `sub({ruleDone})` /
-`SubRuleDone` (outline), the reconciled lex trace (semantic tokens),
-`continuations` / `Continuations` (completion).
+LSP program (parser#94–#109, in every engine runtime): `parse.recover` /
+`ParseRecover` / `parse_recover` (multi-error diagnostics),
+`sub({ruleDone})` / `SubRuleDone` / `subscribe_rule_done` (outline), the
+reconciled lex trace (semantic tokens), `continuations` /
+`Continuations` / `continuations` (completion).
 
 ## Repository map
 
@@ -83,23 +84,28 @@ LSP program (parser#94–#109, both runtimes): `parse.recover` /
 |---|---|
 | `ts/` | **Canonical** TypeScript package (`@tabnas/lsp` on npm). Plain CommonJS, no build step. `src/`: `core.js` (protocol-free pipeline), `server.js` (protocol front-end), `registry.js` (routing), `documents.js` (position encoding), `instances.js` (cache/mux/quarantine), `loaders.js` (L1/L2/L3 + firewall), `generate.js` (the generator). Bins: `bin/tabnas-lsp.js`, `bin/tabnas-lsp-gen.js`. |
 | `go/` | Go port — module `github.com/tabnas/lsp/go`. Same pipeline over the Go engine, plus a dependency-free stdio JSON-RPC server (`Serve`). Exists so generated Go servers are real: `tabnas-lsp-gen --runtime go` emits a module over this package. |
-| `rs/` | Rust port of the SEMANTIC-TOKEN half only — crate `tabnas-lsp` (`tabnas_lsp`), over the Rust engine as a sibling path dependency (`../../parser/rs`). `src/`: `trace.rs` (the `subscribe_lex` collector and `reconcile`), `semantic.rs` (CANON map, prefix conventions, the fixed legend, `semantic_tokens`, the LSP delta `encode`), `registry.rs` (`ts/data/registry.json` embedded: `lexStream`, `semanticTokens` overrides), `highlight.rs` (the host-facing `highlight`/`Highlighter`: parse, reconcile, map, byte spans). Not a language server: diagnostics, outline and completion stay in `ts/` and `go/`. Exists so Rust hosts (`aless`) colour any grammar's text the way the server does. |
+| `rs/` | Rust port of the whole pipeline — crate `tabnas-lsp` (`tabnas_lsp`), a library and the `tabnas-lsp` binary, over the Rust engine as a sibling path dependency (`../../parser/rs`). `src/`: `types.rs` (shared definitions), `documents.rs` (positions in UTF-16 or UTF-8, incremental sync), `instances.rs` (cache, the one mux pair, serialized parses, quarantine), `trace.rs` + `semantic.rs` (reconciled lex trace, CANON map, legend, delta encoding), `analyze.rs`, `outline.rs`, `hover.rs`, `completion.rs` (the `core.js` derivations), `registry.rs` (routing over the tiers, `ts/data/registry.json` embedded), `loaders.rs` (L1 linked grammars, L2 specs, L3 dialects, the firewall), `jsonrpc.rs` + `server.rs` (the protocol front-end), `highlight.rs` (host-facing byte spans), `bin/tabnas-lsp.rs`. Features: `dialects` (L3), `fleet` (the bundled grammars linked into the binary). Exists so Rust hosts (`aless`) use the server's analysis as a dependency, and so `tabnas-lsp --stdio` and `tabnas-lsp-gen --runtime rust` servers run where Node does not. |
 | `editors/` | **Generated** (`make gen-editors`) multi-language editor plugins for the unified server. Never hand-edit — `ts/test/geneditors.test.js` gates staleness. |
-| `test/fixtures/` | Cross-runtime fixtures: `json-grammar.json` (the shared pure-data strict-JSON grammar, copied from `parser/ts/test/json-builder.fixture.json` with a drift gate) and `lsp-conformance.json` (diagnostics/outline/completion cases the TS and Go runtimes execute, and a `semantic` section all three do). |
+| `test/fixtures/` | Cross-runtime fixtures: `json-grammar.json` (the shared pure-data strict-JSON grammar, copied from `parser/ts/test/json-builder.fixture.json` with a drift gate) and `lsp-conformance.json` (the `analyze`, `completions`, `outlines` and `semantic` sections every runtime executes). |
 | `ts/data/` | Generated: `registry.json` (from fleet `tabnas.plugin.json` descriptors) and `diagnostic-fixtures.json` (262 cases from the fleet `test/spec` TSV corpus). Both generators refuse to write from a partial fleet checkout. |
 
 ## Authority and alignment rules
 
 1. **TypeScript is canonical.** The Go and Rust ports mirror it **by
-   fixture parity, not code sharing**: `test/fixtures/lsp-conformance.json`
-   is executed by `ts/test/conformance.test.js`, `go/conformance_test.go`
-   and `rs/tests/conformance_test.rs` (the Rust crate runs the `semantic`
-   section, the half it ports). A Go or Rust mismatch is a port defect;
-   fixture values change only when the TS pipeline's behavior changes,
-   and are generated by running the TS core, never written by hand.
+   fixture parity, not code sharing**: every section of
+   `test/fixtures/lsp-conformance.json` is executed by all three
+   runners, `ts/test/conformance.test.js`, `go/conformance_test.go` and
+   `rs/tests/conformance_test.rs`, and a new section gets a runner in
+   each of them in the same change. A Go or Rust mismatch is a port
+   defect; fixture values change only when the TS pipeline's behavior
+   changes, and are generated by running the TS core, never written by
+   hand. Beyond the fixtures, `rs/tests/parity_sweep.rs` (ignored; run
+   it by hand, `cargo test --test parity_sweep -- --ignored --nocapture`
+   in `rs/`) sweeps seeded random documents through the TS core and the
+   Rust crate and tells the port's mismatches from the engines'.
 2. **An engine divergence found here is an engine bug there.** The
-   conformance suite runs the same inputs through both engines; when
-   the two runtimes disagree on parse results, fix `parser` (TS wins,
+   conformance suite runs the same inputs through every engine; when
+   the runtimes disagree on parse results, fix `parser` (TS wins,
    per its DIVERGENCE.md bar) — do not paper over it in this repo.
    Precedent: the suite's first run caught Go recovery silently
    accepting trailing content that TS reported (`"x" q`), fixed in
@@ -136,9 +142,12 @@ a sibling for the same reason in all three jobs: this repo tracks
 engine work that may be unreleased.
 
 The generator's end-to-end tests RUN what they generate: the Node
-server serves a scripted LSP session over stdio, and the Go module is
+server serves a scripted LSP session over stdio, the Go module is
 `go mod tidy && go build`-compiled and then serves the same session
-(skipped when `go` is not installed).
+(skipped when `go` is not installed), and the Rust crate is
+`cargo build`-compiled over this checkout's `rs/` and serves it too
+(skipped when `cargo` is not installed; `TABNAS_LSP_RUST_E2E=0`
+suppresses it, as `TABNAS_LSP_GO_E2E=0` does the Go case).
 
 ## Untrusted input
 

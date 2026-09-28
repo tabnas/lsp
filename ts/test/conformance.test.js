@@ -78,6 +78,14 @@ describe('lsp-conformance', () => {
     })
   }
 
+  for (const c of SUITE.outlines) {
+    it('outline: ' + c.name, () => {
+      const doc = new Doc('file:///t.jsonf', 'jsonf', 1, c.input)
+      const a = core.analyze(instances, inst, ENTRY, doc)
+      assert.deepStrictEqual(JSON.parse(JSON.stringify(a.outline)), c.symbols)
+    })
+  }
+
   for (const c of SUITE.semantic) {
     it('semantic: ' + c.name, () => {
       const entry = Object.assign({}, ENTRY, { semanticTokens: c.overrides || {} })

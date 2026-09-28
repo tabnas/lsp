@@ -5,8 +5,9 @@ The tabnas language server and language-server generator.
 One LSP server serves **every** tabnas grammar: fleet plugins,
 serialized `GrammarSpec` data, or BNF-dialect text added dynamically
 through workspace configuration, and the same machinery **generates**
-standalone single-language servers (Node packages or Go binaries) plus
-the editor plugins to use them, from one parser module or grammar.
+standalone single-language servers (Node packages, Go binaries or
+Rust binaries) plus the editor plugins to use them, from one parser
+module or grammar.
 
 ```bash
 # the unified server, over stdio
@@ -30,6 +31,18 @@ reach. Grammars can be added without rebuilding the server: an installed
 plugin module, a serialized `GrammarSpec`, or a BNF dialect compiled at
 load time, declared per workspace folder and reloaded when the file
 changes.
+
+## Generated servers
+
+`tabnas-lsp-gen --runtime node|go|rust` picks the generated server's
+runtime: a Node package over this one, a Go module over
+`github.com/tabnas/lsp/go`, or a Cargo crate over the Rust port,
+`tabnas-lsp`, which the crate takes from this repository by git
+dependency because the tabnas crates are not on crates.io. A pure-data
+grammar (`--spec`, or BNF text that `--grammar` compiles at generation
+time) serves from any of the three; a grammar that is live code needs
+its twin in the chosen runtime (`--go-plugin`, `--rust-plugin`). The
+full matrix is in the design's section 7.
 
 ## Engine
 

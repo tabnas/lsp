@@ -14,7 +14,11 @@
     "error count, tokens the decoded [line, character, length, type]",
     "rows (a token spanning lines is one row per line), data the LSP",
     "delta-encoded form over the fixed legend; overrides, when present,",
-    "is the entry's semanticTokens map."
+    "is the entry's semanticTokens map. outlines pins the whole",
+    "DocumentSymbol tree the outline derives (name, kind, range,",
+    "selectionRange, children), where the analyze section pins the",
+    "names alone: columns count UTF-16 units from the engine's column,",
+    "an end is its token's end, a forced close ends at its open token."
   ],
   "analyze": [
     {
@@ -403,6 +407,172 @@
       "errors": 0,
       "tokens": [],
       "data": []
+    }
+  ],
+  "outlines": [
+    {
+      "name": "nested containers on one line",
+      "input": "{\"a\":[1,{\"b\":2}],\"c\":{}}",
+      "symbols": [
+        {
+          "name": "Object", "kind": 19,
+          "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 24 } },
+          "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+          "children": [
+            {
+              "name": "Array", "kind": 18,
+              "range": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 16 } },
+              "selectionRange": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 5 } },
+              "children": [
+                {
+                  "name": "Object", "kind": 19,
+                  "range": { "start": { "line": 0, "character": 8 }, "end": { "line": 0, "character": 15 } },
+                  "selectionRange": { "start": { "line": 0, "character": 8 }, "end": { "line": 0, "character": 8 } },
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Object", "kind": 19,
+              "range": { "start": { "line": 0, "character": 21 }, "end": { "line": 0, "character": 23 } },
+              "selectionRange": { "start": { "line": 0, "character": 21 }, "end": { "line": 0, "character": 21 } },
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nested across CRLF lines",
+      "input": "{\r\n  \"a\": [\r\n    1,\r\n    {\"b\": 2}\r\n  ]\r\n}",
+      "symbols": [
+        {
+          "name": "Object", "kind": 19,
+          "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 5, "character": 1 } },
+          "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+          "children": [
+            {
+              "name": "Array", "kind": 18,
+              "range": { "start": { "line": 1, "character": 7 }, "end": { "line": 4, "character": 3 } },
+              "selectionRange": { "start": { "line": 1, "character": 7 }, "end": { "line": 1, "character": 7 } },
+              "children": [
+                {
+                  "name": "Object", "kind": 19,
+                  "range": { "start": { "line": 3, "character": 4 }, "end": { "line": 3, "character": 12 } },
+                  "selectionRange": { "start": { "line": 3, "character": 4 }, "end": { "line": 3, "character": 4 } },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "astral and two-unit characters before containers",
+      "input": "[\"𝄞\", {\"k\": \"é\"}, [\"😀\"]]",
+      "symbols": [
+        {
+          "name": "Array", "kind": 18,
+          "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 26 } },
+          "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+          "children": [
+            {
+              "name": "Object", "kind": 19,
+              "range": { "start": { "line": 0, "character": 7 }, "end": { "line": 0, "character": 17 } },
+              "selectionRange": { "start": { "line": 0, "character": 7 }, "end": { "line": 0, "character": 7 } },
+              "children": []
+            },
+            {
+              "name": "Array", "kind": 18,
+              "range": { "start": { "line": 0, "character": 19 }, "end": { "line": 0, "character": 25 } },
+              "selectionRange": { "start": { "line": 0, "character": 19 }, "end": { "line": 0, "character": 19 } },
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "forced closes of unterminated containers",
+      "input": "{\"a\":[1,{\"b\":2",
+      "symbols": [
+        {
+          "name": "Object", "kind": 19,
+          "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 1 } },
+          "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+          "children": []
+        },
+        {
+          "name": "Array", "kind": 18,
+          "range": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 6 } },
+          "selectionRange": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 5 } },
+          "children": []
+        },
+        {
+          "name": "Object", "kind": 19,
+          "range": { "start": { "line": 0, "character": 8 }, "end": { "line": 0, "character": 9 } },
+          "selectionRange": { "start": { "line": 0, "character": 8 }, "end": { "line": 0, "character": 8 } },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "a comment spanning lines before a container",
+      "input": "/* a\nb */ [ {\"x\": \"y\"}, [] ]",
+      "symbols": [
+        {
+          "name": "Array", "kind": 18,
+          "range": { "start": { "line": 1, "character": 5 }, "end": { "line": 1, "character": 23 } },
+          "selectionRange": { "start": { "line": 1, "character": 5 }, "end": { "line": 1, "character": 5 } },
+          "children": [
+            {
+              "name": "Object", "kind": 19,
+              "range": { "start": { "line": 1, "character": 7 }, "end": { "line": 1, "character": 17 } },
+              "selectionRange": { "start": { "line": 1, "character": 7 }, "end": { "line": 1, "character": 7 } },
+              "children": []
+            },
+            {
+              "name": "Array", "kind": 18,
+              "range": { "start": { "line": 1, "character": 19 }, "end": { "line": 1, "character": 21 } },
+              "selectionRange": { "start": { "line": 1, "character": 19 }, "end": { "line": 1, "character": 19 } },
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "containers inside a recovered error",
+      "input": "{\"a\":true blah,\"b\":[1,2],\"c\":{\"d\":[]}}",
+      "symbols": [
+        {
+          "name": "Object", "kind": 19,
+          "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 38 } },
+          "selectionRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
+          "children": [
+            {
+              "name": "Array", "kind": 18,
+              "range": { "start": { "line": 0, "character": 19 }, "end": { "line": 0, "character": 24 } },
+              "selectionRange": { "start": { "line": 0, "character": 19 }, "end": { "line": 0, "character": 19 } },
+              "children": []
+            },
+            {
+              "name": "Object", "kind": 19,
+              "range": { "start": { "line": 0, "character": 29 }, "end": { "line": 0, "character": 37 } },
+              "selectionRange": { "start": { "line": 0, "character": 29 }, "end": { "line": 0, "character": 29 } },
+              "children": [
+                {
+                  "name": "Array", "kind": 18,
+                  "range": { "start": { "line": 0, "character": 34 }, "end": { "line": 0, "character": 36 } },
+                  "selectionRange": { "start": { "line": 0, "character": 34 }, "end": { "line": 0, "character": 34 } },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

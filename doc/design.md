@@ -26,9 +26,10 @@ One repository, two complementary products over the same core:
    generates** a standalone, single-language LSP server, plus the
    editor plugins needed to use it. The server runtime follows the
    parser module's language: a TypeScript plugin yields a Node server;
-   a Go plugin (or any pure-data grammar) yields a Go server binary.
-   Other runtimes arrive through the pure-`GrammarSpec` lane and the C
-   ABI as those mature (§7.4).
+   a Go plugin (or any pure-data grammar) yields a Go server binary;
+   a Rust grammar crate (or any pure-data grammar) yields a Rust
+   server binary. Other runtimes arrive through the pure-`GrammarSpec`
+   lane and the C ABI as those mature (§7.4).
 
 The two are the same machinery at different binding times: the unified
 server binds grammars at runtime from a registry; the generator binds
@@ -105,7 +106,7 @@ parser in an LSP and making a *parser toolkit* LSP-capable.
                     ┌─────────▼────────┐ ┌────▼─────────────────────┐
                     │ tabnas-lsp       │ │ tabnas-lsp-gen           │
                     │ unified server   │ │ single-language servers  │
-                    │ (all grammars,   │ │ (node pkg | go module)   │
+                    │ (all grammars,   │ │ (node | go | rust)       │
                     │ dynamic add)     │ │ + editor plugins         │
                     └──────────────────┘ └──────────────────────────┘
 ```
@@ -113,22 +114,24 @@ parser in an LSP and making a *parser toolkit* LSP-capable.
 The protocol layer (`ts/src/server.js`) is a thin front-end over a
 protocol-free core (`ts/src/core.js`), the mcp one-core/thin-front-ends
 discipline. The generator emits wrappers that *call this package* (Node
-targets) or the Go port (Go targets); it does not emit copies of the
-pipeline, so a fix here reaches every generated server on update.
+targets), the Go port (Go targets) or the Rust port (Rust targets); it
+does not emit copies of the pipeline, so a fix here reaches every
+generated server on update.
 
 ## 4. The engine contract (shipped)
 
 The server rests on five opt-in, default-off engine extensions, all
-merged in `parser` for both runtimes (TS #94–#102, Go #102–#109), all
-pinned by shared spec fixtures with the flags off:
+merged in `parser` for the TypeScript and Go runtimes (TS #94–#102, Go
+#102–#109) and carried by the Rust engine (`parser/rs`), all pinned by
+shared spec fixtures with the flags off:
 
-| Extension | TS surface | Go surface |
-|---|---|---|
-| Error recovery (multi-error) | `parse.recover` options; `{value, errors}` result | `Options.Parse.Recover`; `ParseRecover(src) (any, []*TabnasError, error)` |
-| Post-process rule event | `sub({ ruleDone })` | `SubRuleDone(fn)` — `RuleDone{State, Alt, Forced}` |
-| Reconciled lex trace | documented dedup contract + retraction events | same contract |
-| Continuations | `tn.continuations(src)` → `{tins, tokens}` | `Continuations(src) ([]Tin, []string)` |
-| Cancellation/budget | `parse.budget` hook | `Options.Parse.Budget` |
+| Extension | TS surface | Go surface | Rust surface |
+|---|---|---|---|
+| Error recovery (multi-error) | `parse.recover` options; `{value, errors}` result | `Options.Parse.Recover`; `ParseRecover(src) (any, []*TabnasError, error)` | `options.parse.recover`; `parse_recover(src)` → `ParseRecovery {value, errors, fatal}` |
+| Post-process rule event | `sub({ ruleDone })` | `SubRuleDone(fn)` — `RuleDone{State, Alt, Forced}` | `subscribe_rule_done(fn)` — `RuleDone {state, alt, forced}` |
+| Reconciled lex trace | documented dedup contract + retraction events | same contract | `subscribe_lex`, same contract |
+| Continuations | `tn.continuations(src)` → `{tins, tokens}` | `Continuations(src) ([]Tin, []string)` | `continuations(src)` → `Continuations {tins, tokens}` |
+| Cancellation/budget | `parse.budget` hook | `Options.Parse.Budget` | `parse_budget(every, check)` |
 
 Recovery derives sync points from the grammar itself: leading tokens of
 close alternates whose `g` tags intersect `syncGroups`, with a
@@ -219,9 +222,10 @@ Three audiences the unified server cannot serve:
   language server" as its own npm package/binary and marketplace
   extension, with no tabnas fleet visible to its users. Langium/Xtext
   prove this is how language authors actually ship.
-- **Go-native deployment**: editors on machines with no Node. A Go
-  plugin's grammar should serve from a static Go binary — the
-  generator emits the module; `go build` does the rest.
+- **Go- and Rust-native deployment**: editors on machines with no
+  Node. A Go plugin's grammar should serve from a static Go binary,
+  a Rust grammar crate's from a Rust one — the generator emits the
+  module or the crate; `go build` or `cargo install` does the rest.
 - **Pinning**: a generated server freezes grammar + engine versions;
   the unified server tracks its registry. CI and reproducible-tooling
   contexts want the former.
@@ -237,25 +241,42 @@ Three audiences the unified server cannot serve:
   `--go-parser-version` (as the release wave can) to pin them, and the
   emitted comment states which of the two happened.
 
+  The Rust lane has the same limit for a different reason: the tabnas
+  crates are not on crates.io, so the generated `Cargo.toml` names
+  each one's GitHub repository with no revision, the first build takes
+  each default branch, and `Cargo.lock` records the commits. Keeping
+  that lock with the crate is what makes it reproducible; pass
+  `--rust-lsp-rev` and `--rust-parser-rev` (and `--rust-plugin-rev`) to
+  pin commits in the manifest itself, and again the emitted comment
+  says which happened.
+
 ### 7.2 Inputs and runtime matrix
 
 The generator accepts one grammar, in any of four forms, and emits a
 server whose runtime matches where the grammar can execute:
 
-| Input | `--runtime node` | `--runtime go` |
-|---|---|---|
-| `--entry <languageId>` (fleet registry) | static registration over `@tabnas/lsp` | pure-data entries: embed spec; closure/imperative: `--go-plugin` import |
-| `--module <npm plugin>` | package depending on the module | ✗ (a TS module cannot run in Go — pass the Go twin via `--go-plugin`) |
-| `--spec <GrammarSpec.json>` | embed + L2 load | **`go:embed` the spec** — the module depends only on the engine |
-| `--grammar <file.abnf\|.ebnf\|.gbnf>` | dialect package compiles at server start | pre-compile to a pure spec at generation time, then embed (the C-ABI precedent: pre-compile → L2) |
+| Input | `--runtime node` | `--runtime go` | `--runtime rust` |
+|---|---|---|---|
+| `--entry <languageId>` (fleet registry) | static registration over `@tabnas/lsp` | pure-data entries: embed spec; closure/imperative: `--go-plugin` import | pure-data entries: embed spec; closure/imperative: `--rust-plugin` crate, linked through `Loader::link`, with the registry's `base` chain supplied to it |
+| `--module <npm plugin>` | package depending on the module | ✗ (a TS module cannot run in Go — pass the Go twin via `--go-plugin`) | ✗ (a TS module cannot run in Rust — pass `--entry` with the Rust twin via `--rust-plugin`) |
+| `--spec <GrammarSpec.json>` | embed + L2 load | **`go:embed` the spec** — the module depends only on the engine | **`include_str!` the spec** — the crate depends only on `tabnas-lsp` |
+| `--grammar <file.abnf\|.ebnf\|.gbnf>` | dialect package compiles at server start | pre-compile to a pure spec at generation time, then embed (the C-ABI precedent: pre-compile → L2) | pre-compile to a pure spec at generation time, then embed, as Go does |
 
 The pure-`GrammarSpec` row is the important one: a *data* grammar is
 runtime-independent, so the "parser module language" really chooses the
 **server runtime**, and any grammar that round-trips the L2 lane can be
-served from either. The Go strategy is deliberately `go:embed`-first
-(design §9.3): linking N plugin modules re-creates the dependency
-lockstep ADR-4 exists to avoid, so only closure/imperative grammars —
-the two kinds that are live code — link their Go packages.
+served from any of them. The Go and Rust strategies are deliberately
+embed-first (design §9.3): linking N plugin modules re-creates the
+dependency lockstep ADR-4 exists to avoid, so only closure/imperative
+grammars — the two kinds that are live code — link their Go packages
+or Rust crates. The Rust crate takes `tabnas-lsp` from this repository
+by git dependency, and the engine through a `[patch]` table, because
+the fleet's crates name their siblings by path (`../../parser/rs`) and
+cargo reads such a path inside a git checkout as a package of that same
+repository. A BNF grammar is compiled by the canonical TypeScript
+dialect packages at generation time rather than by the Rust dialect
+crates at start, so the Rust server serves the spec the other two
+runtimes serve and links no compiler.
 
 Spec inputs pass the full L2 firewall (§10) **at generation time** as
 well as at load time; a generator that emits a server around a poisoned
@@ -267,6 +288,7 @@ grammar would just be a slower way to load it.
 out/
   server/            node: package.json + server.js (+ data/grammar.json)
                      go:   go.mod + main.go (+ grammar.json, //go:embed)
+                     rust: Cargo.toml + src/main.rs (+ grammar.json, include_str!)
   editors/
     vscode/          full extension: package.json contributions,
                      extension.js (vscode-languageclient), language-configuration
@@ -282,26 +304,31 @@ out/
 
 The emitted Node server is ~20 lines: build one registry entry, call
 `startServer` with a fixed registry. The emitted Go server is ~30
-lines over `github.com/tabnas/lsp/go`. Generated wrappers contain no
-pipeline logic by design — they pin *what* is served, not *how*.
+lines over `github.com/tabnas/lsp/go`, and the emitted Rust server
+~30 lines over the `tabnas-lsp` crate (`entry_from_spec_json`, or an
+entry and a `Loader` for a linked crate, then `serve`). Generated
+wrappers contain no pipeline logic by design — they pin *what* is
+served, not *how*.
 
 `--unified` generates the multi-language VS Code extension (and editor
 fragments) for the whole bundled registry — languages contributed only
 for collision-policy-enabled entries — which is how this repo's own
 extension is built rather than hand-maintained.
 
-### 7.4 Other parser-module languages (rust, …)
+### 7.4 Other parser-module languages
 
-There is no tabnas Rust runtime today
-(`parser/doc/rust-port-feasibility.md` is the exploration). The design
-holds three doors open without pretending they exist: (a) any pure-data
-grammar already serves from either existing runtime — a Rust *user*
-can have a Go binary or Node server for their grammar now; (b) the C
-ABI widening (`tabnas_parse_ex`, `tabnas_events`, `tabnas_expected`,
-plan P3) makes a thin LSP shim writable in any C-capable host; (c) a
-future Rust engine port slots in as a third `--runtime` with the same
-embed-the-spec shape. The generator refuses unknown runtimes with that
-explanation rather than emitting something that cannot work.
+Rust was the first language beyond the two original runtimes, and it
+arrived by the third of the doors this section held open: the engine
+was ported (`parser/rs`), this pipeline was ported over it (`rs/`,
+crate `tabnas-lsp`), and `--runtime rust` slotted in with the same
+embed-the-spec shape as Go. For any other language the two remaining
+doors stand: (a) any pure-data grammar already serves from each
+existing runtime — a user of another language can have a Node, Go or
+Rust server for their grammar now; (b) the C ABI widening
+(`tabnas_parse_ex`, `tabnas_events`, `tabnas_expected`, plan P3)
+makes a thin LSP shim writable in any C-capable host. The generator
+refuses unknown runtimes with that explanation rather than emitting
+something that cannot work.
 
 ## 8. Feature derivations
 
@@ -311,7 +338,7 @@ One debounced parse per change; every artifact from that single pass:
 |---|---|
 | Diagnostics | `errors[]` (recovery) → structured diagnostic → LSP `Diagnostic`; `codeDescription.href` → tabnas.dev error registry; `len` is code points and is converted through the document text (§9) |
 | Completion | `continuations()` — sentinels (`#ZZ`, `#AA`, `#BD`) filtered; fixed-token source as label |
-| Semantic tokens | reconciled lex trace (newest-per-position + span shadowing) → CANON default map + prefix conventions (`KW_*`→keyword, …) + per-entry overrides; fixed superset legend so hot-adds never re-register; served only for `lexStream: clean` entries. This derivation alone also exists in Rust (`rs/`, crate `tabnas-lsp`, fixture-mirrored like the Go port) for Rust hosts that highlight text |
+| Semantic tokens | reconciled lex trace (newest-per-position + span shadowing) → CANON default map + prefix conventions (`KW_*`→keyword, …) + per-entry overrides; fixed superset legend so hot-adds never re-register; served only for `lexStream: clean` entries. The Rust crate also hands a host the byte spans to colour (`highlight`), which is how `aless` uses it |
 | Outline | `ruleDone` events (incl. `forced` closes) → rule-name filter → span-nested `DocumentSymbol`s |
 | Hover | token under cursor + descriptions (tracked; degrade to nothing) |
 | Cross-file | multisource `documentLink` (workspace-sandboxed, off by default; tracked) |
@@ -324,12 +351,14 @@ covers them.
 ## 9. Documents and position encoding
 
 All encoding knowledge lives in the document store and only there.
-Engine diagnostics carry `row`/`col`/`pos` in UTF-16 units (TS) or
-runes (Go), but `len` in Unicode **code points** of the token source —
-a third unit. Both servers convert through the actual document text
-before building a `Range`; the Go server additionally converts
-rune-based columns to the client's negotiated encoding (UTF-16 by
-default). Astral-plane fixtures pin the conversions in both runtimes.
+Engine diagnostics carry `row`/`col`/`pos` in UTF-16 units (TS), runes
+(Go) or scalar values with byte token offsets (Rust), but `len` in
+Unicode **code points** of the token source — a further unit. Every
+server converts through the actual document text before building a
+`Range`; the Go and Rust servers additionally convert their columns to
+the client's negotiated encoding: UTF-16 by default, and in Rust UTF-8
+when the client offers it (`general.positionEncodings`). Astral-plane
+fixtures pin the conversions in all three runtimes.
 
 ## 10. Security
 
@@ -356,8 +385,17 @@ surfaced); every parse/provider call is wrapped; per-grammar quarantine
 keeps one bad grammar from taking the server down; multisource
 resolution is workspace-sandboxed and off by default.
 
-**Not yet shipped, and load-bearing for the ReDoS story** (§14 tracks
-both): parse budgets/cancellation and document-size caps. Serialized
+**Not yet shipped in the TypeScript and Go servers, and load-bearing
+for the ReDoS story** (§14 tracks both): parse budgets/cancellation and
+document-size caps. The Rust server has both as configuration
+(`Config::max_document_bytes`, and `Config::parse_deadline` through the
+engine's budget hook, reported as `cancel`), and bounds the L3 compile
+as well, which every server runs on its message loop: a counted
+repetition past `MAX_REPETITION_BOUND` (or counts past
+`MAX_REPETITION_TOTAL` in all) is refused before the compile, since the
+compilers unroll a count into rules at a cost that grows with its
+square, and the compile runs on its own thread under
+`Loader::with_compile_budget` (10 s by default). Serialized
 regexes are legal grammar data and pass the `ref` scan by design, so
 until the engine's `parse.budget` hook is wired here, a hostile
 workspace grammar's regex is bounded only by the caps above — which
@@ -394,7 +432,8 @@ until then the hook enforces deadlines only.
 
 ## 13. Cross-runtime parity
 
-TS is canonical; Go mirrors by **fixtures, not code sharing**:
+TS is canonical; Go and Rust mirror it by **fixtures, not code
+sharing**:
 
 - `test/fixtures/json-grammar.json` — a pure-data strict-JSON
   `GrammarSpec` (copied from the engine's builder fixture; a drift test
@@ -402,14 +441,22 @@ TS is canonical; Go mirrors by **fixtures, not code sharing**:
   is both the shared test grammar and the standing proof of the L2
   lane both servers depend on.
 - `test/fixtures/lsp-conformance.json` — document → expected
-  diagnostics codes / outline / completion cases, executed by
-  `ts/test/conformance.test.js` and `go/conformance_test.go`.
+  diagnostic codes and first ranges, outline names and whole symbol
+  trees, completion labels and semantic tokens, every section executed
+  by `ts/test/conformance.test.js`, `go/conformance_test.go` and
+  `rs/tests/conformance_test.rs`.
+- `rs/tests/parity_sweep.rs` — seeded random documents through the TS
+  core (node) and the Rust crate, run by hand. It also compares the two
+  ENGINES' raw event streams, so a mismatch is classified as the port's
+  (the engines agree, the pipelines do not) or the engine's, and feeds
+  the TS engine's events through the Rust pipeline functions, which must
+  reproduce the TS results whatever the engines do.
 - `ts/data/diagnostic-fixtures.json` — 262 cases generated from the
   fleet's `test/spec` TSV corpus (`ERROR:<code>` rows across 27
   grammars); the fleet-wide diagnostics gate for checkouts with the
   grammars installed.
 
-**Parity is over the pipeline, not the feature set.** The two runtimes
+**Parity is over the pipeline, not the feature set.** The runtimes
 must agree on what a document *means* — diagnostics, outline, semantic
 tokens, completion — and that is what the fixtures pin. They are not
 the same product around it. The Go runtime is the embedded/generated
@@ -418,7 +465,11 @@ once at startup. It has no workspace manifests, no folder scoping, and
 no hot reload, so the whole class of multi-root concerns — routing a
 document by its folder, keying an instance cache and a quarantine by
 `(entry, folder)`, releasing one folder's quarantine without disturbing
-another's — exists in `ts/` alone and has nothing to mirror in `go/`.
+another's — has nothing to mirror in `go/`. The Rust runtime is a full
+unified server as well as a library: it ports that class from `ts/`
+(the configuration tiers, folder-scoped workspace manifests, hot reload
+of manifests and grammar files, the trust gate), with L1 as grammar
+crates linked in rather than modules required.
 
 A divergence in the pipeline is an engine or port bug (see
 `parser/DIVERGENCE.md`, TS canonical). A capability present only in
@@ -431,13 +482,17 @@ Shipped in this repo: the unified server (registry, routing, documents,
 instances, diagnostics, semantic tokens, outline, completion,
 `tabnas/status`), the L1/L2/L3 loaders with the firewall, the Go core
 (`go/`) with the same pipeline over `ParseRecover`/`SubRuleDone`/
-`Continuations`, the generator with Node and Go targets and the editor
-plugin matrix, and the conformance fixtures.
+`Continuations`, the Rust port (`rs/`: the whole pipeline and the
+unified server over `parse_recover`/`subscribe_rule_done`/
+`continuations`, a library for Rust hosts and the `tabnas-lsp` binary),
+the generator with Node, Go and Rust targets and the editor plugin
+matrix, and the conformance fixtures.
 
 Tracked next, in rough value order: **parse budgets and document-size
-caps** (the §10 gap — the engine's `parse.budget` hook exists and is
-simply not wired here yet, and it is what bounds a hostile grammar's
-serialized regex); hover token descriptions; worker
+caps** in the TypeScript and Go servers (the §10 gap — the engine's
+`parse.budget` hook exists and is not wired there yet, and it is what
+bounds a hostile grammar's serialized regex; the Rust server wires
+both); hover token descriptions; worker
 isolation + in-flight cancellation; edit-transformation of cached
 spans; browser build (`vscode-languageserver/browser` — the web
 playground already runs the engine client-side); marketplace packaging
