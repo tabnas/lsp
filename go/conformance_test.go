@@ -32,6 +32,11 @@ type confSuite struct {
 		Position Position `json:"position"`
 		Labels   []string `json:"labels"`
 	} `json:"completions"`
+	Outlines []struct {
+		Name    string            `json:"name"`
+		Input   string            `json:"input"`
+		Symbols []*DocumentSymbol `json:"symbols"`
+	} `json:"outlines"`
 	Semantic []struct {
 		Name      string            `json:"name"`
 		Input     string            `json:"input"`
@@ -115,6 +120,15 @@ func TestConformance(t *testing.T) {
 			sort.Strings(labels)
 			if enc(labels) != enc(c.Labels) {
 				t.Fatalf("labels = %s, want %s", enc(labels), enc(c.Labels))
+			}
+		})
+	}
+
+	for _, c := range suite.Outlines {
+		t.Run("outline: "+c.Name, func(t *testing.T) {
+			a := Analyze(instances, inst, entry, doc(c.Input))
+			if enc(a.Outline) != enc(c.Symbols) {
+				t.Fatalf("outline = %s, want %s", enc(a.Outline), enc(c.Symbols))
 			}
 		})
 	}

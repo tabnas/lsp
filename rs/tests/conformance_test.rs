@@ -7,9 +7,10 @@
 // One runner per section, mirroring the TypeScript runner case for
 // case: `run_analyze` (diagnostic codes in order, the first diagnostic's
 // range, the outline's name tree), `run_completions` (sorted item
-// labels at a position) and `run_semantic` (error count, decoded tokens,
-// delta-encoded data). A new fixture section (hover, outline positions)
-// gets a runner of its own here.
+// labels at a position), `run_outlines` (the whole symbol tree, ranges
+// included) and `run_semantic` (error count, decoded tokens,
+// delta-encoded data). A new fixture section gets a runner of its own
+// here, and in the other two runtimes' runners in the same change.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,8 +19,8 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tabnas::{Options, Tabnas};
 use tabnas_lsp::{
-    analyze, completion, encode, highlight, semantic_tokens, Doc, Entry, Highlighter, Instances,
-    LexTrace, MakeInstance, Overrides, Position, Range,
+    analyze, completion, encode, highlight, semantic_tokens, Doc, DocumentSymbol, Entry,
+    Highlighter, Instances, LexTrace, MakeInstance, Overrides, Position, Range,
 };
 
 fn fixtures() -> PathBuf {
@@ -39,7 +40,15 @@ fn fixture(name: &str) -> String {
 struct Suite {
     analyze: Vec<AnalyzeCase>,
     completions: Vec<CompletionCase>,
+    outlines: Vec<OutlinesCase>,
     semantic: Vec<SemanticCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OutlinesCase {
+    name: String,
+    input: String,
+    symbols: Vec<DocumentSymbol>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,7 +132,7 @@ fn doc(text: &str) -> Doc {
     Doc::new("file:///t.jsonf", "jsonf", 1, text)
 }
 
-fn outline_names(symbols: &[tabnas_lsp::DocumentSymbol]) -> Vec<OutlineNode> {
+fn outline_names(symbols: &[DocumentSymbol]) -> Vec<OutlineNode> {
     symbols
         .iter()
         .map(|symbol| OutlineNode {
@@ -197,6 +206,23 @@ fn run_completions(suite: &Suite) {
 #[test]
 fn the_completions_section_matches_the_canonical_pipeline() {
     run_completions(&suite());
+}
+
+// ---------------------------------------------------------------------
+// outlines
+
+fn run_outlines(suite: &Suite) {
+    assert!(!suite.outlines.is_empty(), "the outlines section has cases");
+    let (instances, inst, entry) = stack();
+    for case in &suite.outlines {
+        let analysis = analyze(&instances, &inst, &entry, &doc(&case.input));
+        assert_eq!(analysis.outline, case.symbols, "{}: symbols", case.name);
+    }
+}
+
+#[test]
+fn the_outlines_section_matches_the_canonical_pipeline() {
+    run_outlines(&suite());
 }
 
 // ---------------------------------------------------------------------
