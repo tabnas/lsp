@@ -26,9 +26,10 @@ One repository, two complementary products over the same core:
    generates** a standalone, single-language LSP server, plus the
    editor plugins needed to use it. The server runtime follows the
    parser module's language: a TypeScript plugin yields a Node server;
-   a Go plugin (or any pure-data grammar) yields a Go server binary.
-   Other runtimes arrive through the pure-`GrammarSpec` lane and the C
-   ABI as those mature (§7.4).
+   a Go plugin (or any pure-data grammar) yields a Go server binary;
+   a Rust grammar crate (or any pure-data grammar) yields a Rust
+   server binary. Other runtimes arrive through the pure-`GrammarSpec`
+   lane and the C ABI as those mature (§7.4).
 
 The two are the same machinery at different binding times: the unified
 server binds grammars at runtime from a registry; the generator binds
@@ -105,7 +106,7 @@ parser in an LSP and making a *parser toolkit* LSP-capable.
                     ┌─────────▼────────┐ ┌────▼─────────────────────┐
                     │ tabnas-lsp       │ │ tabnas-lsp-gen           │
                     │ unified server   │ │ single-language servers  │
-                    │ (all grammars,   │ │ (node pkg | go module)   │
+                    │ (all grammars,   │ │ (node | go | rust)       │
                     │ dynamic add)     │ │ + editor plugins         │
                     └──────────────────┘ └──────────────────────────┘
 ```
@@ -113,8 +114,9 @@ parser in an LSP and making a *parser toolkit* LSP-capable.
 The protocol layer (`ts/src/server.js`) is a thin front-end over a
 protocol-free core (`ts/src/core.js`), the mcp one-core/thin-front-ends
 discipline. The generator emits wrappers that *call this package* (Node
-targets) or the Go port (Go targets); it does not emit copies of the
-pipeline, so a fix here reaches every generated server on update.
+targets), the Go port (Go targets) or the Rust port (Rust targets); it
+does not emit copies of the pipeline, so a fix here reaches every
+generated server on update.
 
 ## 4. The engine contract (shipped)
 
@@ -219,9 +221,10 @@ Three audiences the unified server cannot serve:
   language server" as its own npm package/binary and marketplace
   extension, with no tabnas fleet visible to its users. Langium/Xtext
   prove this is how language authors actually ship.
-- **Go-native deployment**: editors on machines with no Node. A Go
-  plugin's grammar should serve from a static Go binary — the
-  generator emits the module; `go build` does the rest.
+- **Go- and Rust-native deployment**: editors on machines with no
+  Node. A Go plugin's grammar should serve from a static Go binary,
+  a Rust grammar crate's from a Rust one — the generator emits the
+  module or the crate; `go build` or `cargo install` does the rest.
 - **Pinning**: a generated server freezes grammar + engine versions;
   the unified server tracks its registry. CI and reproducible-tooling
   contexts want the former.
@@ -237,25 +240,42 @@ Three audiences the unified server cannot serve:
   `--go-parser-version` (as the release wave can) to pin them, and the
   emitted comment states which of the two happened.
 
+  The Rust lane has the same limit for a different reason: the tabnas
+  crates are not on crates.io, so the generated `Cargo.toml` names
+  each one's GitHub repository with no revision, the first build takes
+  each default branch, and `Cargo.lock` records the commits. Keeping
+  that lock with the crate is what makes it reproducible; pass
+  `--rust-lsp-rev` and `--rust-parser-rev` (and `--rust-plugin-rev`) to
+  pin commits in the manifest itself, and again the emitted comment
+  says which happened.
+
 ### 7.2 Inputs and runtime matrix
 
 The generator accepts one grammar, in any of four forms, and emits a
 server whose runtime matches where the grammar can execute:
 
-| Input | `--runtime node` | `--runtime go` |
-|---|---|---|
-| `--entry <languageId>` (fleet registry) | static registration over `@tabnas/lsp` | pure-data entries: embed spec; closure/imperative: `--go-plugin` import |
-| `--module <npm plugin>` | package depending on the module | ✗ (a TS module cannot run in Go — pass the Go twin via `--go-plugin`) |
-| `--spec <GrammarSpec.json>` | embed + L2 load | **`go:embed` the spec** — the module depends only on the engine |
-| `--grammar <file.abnf\|.ebnf\|.gbnf>` | dialect package compiles at server start | pre-compile to a pure spec at generation time, then embed (the C-ABI precedent: pre-compile → L2) |
+| Input | `--runtime node` | `--runtime go` | `--runtime rust` |
+|---|---|---|---|
+| `--entry <languageId>` (fleet registry) | static registration over `@tabnas/lsp` | pure-data entries: embed spec; closure/imperative: `--go-plugin` import | pure-data entries: embed spec; closure/imperative: `--rust-plugin` crate, linked through `Loader::link`, with the registry's `base` chain supplied to it |
+| `--module <npm plugin>` | package depending on the module | ✗ (a TS module cannot run in Go — pass the Go twin via `--go-plugin`) | ✗ (a TS module cannot run in Rust — pass `--entry` with the Rust twin via `--rust-plugin`) |
+| `--spec <GrammarSpec.json>` | embed + L2 load | **`go:embed` the spec** — the module depends only on the engine | **`include_str!` the spec** — the crate depends only on `tabnas-lsp` |
+| `--grammar <file.abnf\|.ebnf\|.gbnf>` | dialect package compiles at server start | pre-compile to a pure spec at generation time, then embed (the C-ABI precedent: pre-compile → L2) | pre-compile to a pure spec at generation time, then embed, as Go does |
 
 The pure-`GrammarSpec` row is the important one: a *data* grammar is
 runtime-independent, so the "parser module language" really chooses the
 **server runtime**, and any grammar that round-trips the L2 lane can be
-served from either. The Go strategy is deliberately `go:embed`-first
-(design §9.3): linking N plugin modules re-creates the dependency
-lockstep ADR-4 exists to avoid, so only closure/imperative grammars —
-the two kinds that are live code — link their Go packages.
+served from any of them. The Go and Rust strategies are deliberately
+embed-first (design §9.3): linking N plugin modules re-creates the
+dependency lockstep ADR-4 exists to avoid, so only closure/imperative
+grammars — the two kinds that are live code — link their Go packages
+or Rust crates. The Rust crate takes `tabnas-lsp` from this repository
+by git dependency, and the engine through a `[patch]` table, because
+the fleet's crates name their siblings by path (`../../parser/rs`) and
+cargo reads such a path inside a git checkout as a package of that same
+repository. A BNF grammar is compiled by the canonical TypeScript
+dialect packages at generation time rather than by the Rust dialect
+crates at start, so the Rust server serves the spec the other two
+runtimes serve and links no compiler.
 
 Spec inputs pass the full L2 firewall (§10) **at generation time** as
 well as at load time; a generator that emits a server around a poisoned
@@ -267,6 +287,7 @@ grammar would just be a slower way to load it.
 out/
   server/            node: package.json + server.js (+ data/grammar.json)
                      go:   go.mod + main.go (+ grammar.json, //go:embed)
+                     rust: Cargo.toml + src/main.rs (+ grammar.json, include_str!)
   editors/
     vscode/          full extension: package.json contributions,
                      extension.js (vscode-languageclient), language-configuration
@@ -282,26 +303,31 @@ out/
 
 The emitted Node server is ~20 lines: build one registry entry, call
 `startServer` with a fixed registry. The emitted Go server is ~30
-lines over `github.com/tabnas/lsp/go`. Generated wrappers contain no
-pipeline logic by design — they pin *what* is served, not *how*.
+lines over `github.com/tabnas/lsp/go`, and the emitted Rust server
+~30 lines over the `tabnas-lsp` crate (`entry_from_spec_json`, or an
+entry and a `Loader` for a linked crate, then `serve`). Generated
+wrappers contain no pipeline logic by design — they pin *what* is
+served, not *how*.
 
 `--unified` generates the multi-language VS Code extension (and editor
 fragments) for the whole bundled registry — languages contributed only
 for collision-policy-enabled entries — which is how this repo's own
 extension is built rather than hand-maintained.
 
-### 7.4 Other parser-module languages (rust, …)
+### 7.4 Other parser-module languages
 
-There is no tabnas Rust runtime today
-(`parser/doc/rust-port-feasibility.md` is the exploration). The design
-holds three doors open without pretending they exist: (a) any pure-data
-grammar already serves from either existing runtime — a Rust *user*
-can have a Go binary or Node server for their grammar now; (b) the C
-ABI widening (`tabnas_parse_ex`, `tabnas_events`, `tabnas_expected`,
-plan P3) makes a thin LSP shim writable in any C-capable host; (c) a
-future Rust engine port slots in as a third `--runtime` with the same
-embed-the-spec shape. The generator refuses unknown runtimes with that
-explanation rather than emitting something that cannot work.
+Rust was the first language beyond the two original runtimes, and it
+arrived by the third of the doors this section held open: the engine
+was ported (`parser/rs`), this pipeline was ported over it (`rs/`,
+crate `tabnas-lsp`), and `--runtime rust` slotted in with the same
+embed-the-spec shape as Go. For any other language the two remaining
+doors stand: (a) any pure-data grammar already serves from each
+existing runtime — a user of another language can have a Node, Go or
+Rust server for their grammar now; (b) the C ABI widening
+(`tabnas_parse_ex`, `tabnas_events`, `tabnas_expected`, plan P3)
+makes a thin LSP shim writable in any C-capable host. The generator
+refuses unknown runtimes with that explanation rather than emitting
+something that cannot work.
 
 ## 8. Feature derivations
 
@@ -431,8 +457,8 @@ Shipped in this repo: the unified server (registry, routing, documents,
 instances, diagnostics, semantic tokens, outline, completion,
 `tabnas/status`), the L1/L2/L3 loaders with the firewall, the Go core
 (`go/`) with the same pipeline over `ParseRecover`/`SubRuleDone`/
-`Continuations`, the generator with Node and Go targets and the editor
-plugin matrix, and the conformance fixtures.
+`Continuations`, the generator with Node, Go and Rust targets and the
+editor plugin matrix, and the conformance fixtures.
 
 Tracked next, in rough value order: **parse budgets and document-size
 caps** (the §10 gap — the engine's `parse.budget` hook exists and is

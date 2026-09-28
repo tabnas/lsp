@@ -5,8 +5,9 @@ The tabnas language server and language-server generator.
 One LSP server serves **every** tabnas grammar: fleet plugins,
 serialized `GrammarSpec` data, or BNF-dialect text added dynamically
 through workspace configuration, and the same machinery **generates**
-standalone single-language servers (Node packages or Go binaries) plus
-the editor plugins to use them, from one parser module or grammar.
+standalone single-language servers (Node packages, Go binaries or
+Rust binaries) plus the editor plugins to use them, from one parser
+module or grammar.
 
 ```
 # the unified server

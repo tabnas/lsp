@@ -66,10 +66,10 @@ notes in the `admin` repo). Two products over one core:
   dynamically as plugin modules (L1), serialized `GrammarSpec` data
   (L2), or BNF-dialect text (L3) via workspace configuration.
 - **`tabnas-lsp-gen`** — generates standalone single-language servers
-  (Node package or Go module; the runtime follows where the grammar
-  can execute) plus editor plugins (VS Code, Neovim, Emacs, Sublime,
-  Helix, Kate, Zed scaffold). `--unified` regenerates this repo's own
-  [`editors/`](editors/).
+  (Node package, Go module or Rust crate; the runtime follows where
+  the grammar can execute) plus editor plugins (VS Code, Neovim,
+  Emacs, Sublime, Helix, Kate, Zed scaffold). `--unified` regenerates
+  this repo's own [`editors/`](editors/).
 
 Every feature derives from the engine contract that shipped for the
 LSP program (parser#94–#109, both runtimes): `parse.recover` /
@@ -136,9 +136,12 @@ a sibling for the same reason in all three jobs: this repo tracks
 engine work that may be unreleased.
 
 The generator's end-to-end tests RUN what they generate: the Node
-server serves a scripted LSP session over stdio, and the Go module is
+server serves a scripted LSP session over stdio, the Go module is
 `go mod tidy && go build`-compiled and then serves the same session
-(skipped when `go` is not installed).
+(skipped when `go` is not installed), and the Rust crate is
+`cargo build`-compiled over this checkout's `rs/` and serves it too
+(skipped when `cargo` is not installed; `TABNAS_LSP_RUST_E2E=0`
+suppresses it, as `TABNAS_LSP_GO_E2E=0` does the Go case).
 
 ## Untrusted input
 
