@@ -605,6 +605,21 @@ const RUST_FN_PATH = /^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$/
 // target name is refused by cargo before anything compiles).
 const RUST_BIN = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/
 
+// What each fleet grammar crate names by sibling path beyond the engine
+// (its rs/Cargo.toml `[dependencies]`): the registry's base chain says
+// which grammar a crate is layered on, but a crate can name more (ini
+// names hoover, feed names jsonic and xml with no base at all), and a
+// git checkout of the crate has to be supplied every one of them from
+// its own repository. ts/test/generate.test.js holds this map to the
+// sibling checkouts whenever the fleet layout has them.
+const RUST_FLEET_DEPS = {
+  csv: ['jsonic'], feed: ['jsonic', 'xml'], ini: ['jsonic', 'hoover'],
+  json: [], json5: ['jsonic'], jsonc: ['jsonic'], jsonic: ['json'],
+  jsonl: ['json'], toml: ['jsonic'], xml: ['jsonic'], yaml: ['jsonic'],
+  zon: ['jsonic'], hoover: [], abnf: ['bnf'], ebnf: ['bnf'], gbnf: ['bnf'],
+  bnf: [],
+}
+
 // rustfmt's defaults, which the emitted Rust follows so that a `cargo
 // fmt` in the generated crate changes nothing: 100 columns a line, and
 // an array literal or a call's arguments go one per line once they are
@@ -811,11 +826,20 @@ function emitRustServer(lang, opts, files) {
     }
   }
 
+  // A fleet crate, from its own repository.
+  const fleetCrate = (short) => ({ crate: 'tabnas-' + short,
+    git: 'https://github.com/tabnas/' + short })
+  const shortOf = (dep) => {
+    const m = /^tabnas-(.+)$/.exec(dep.crate)
+    return m && m[1] in RUST_FLEET_DEPS ? m[1] : null
+  }
+
   // Local checkouts in place of git sources (`--rust-path crate=dir`),
   // the counterpart of Go's replace directives. A crate taken from a
   // path resolves its own siblings by path, so it needs no patch table.
   const known = [lsp.crate, parser.crate, ...(plugin ? [plugin.crate] : []),
-    ...layers.map((l) => l.crate)]
+    ...layers.map((l) => l.crate),
+    ...Object.keys(RUST_FLEET_DEPS).map((short) => 'tabnas-' + short)]
   const paths = new Map()
   for (const p of opts.rustPath || []) {
     const eq = String(p).indexOf('=')
@@ -833,20 +857,47 @@ function emitRustServer(lang, opts, files) {
     : '{ git = ' + tomlStr(dep.git) +
       (dep.rev ? ', rev = ' + tomlStr(dep.rev) : '') + ' }'
 
-  // The [patch] tables: one per git source, naming the engine and the
-  // next layer down. tabnas-lsp names only the engine: its optional
-  // dialect and fleet crates are path dependencies too, but cargo
-  // resolves a git dependency's optional path dependencies only for the
-  // features a consumer turns on, and this crate turns none on (a
-  // grammar's crate is linked directly). The grammar crate and each
-  // layer name the engine and the layer below, and the chain stops at
-  // the first crate taken from a path.
+  // The [patch] tables: one per git source, naming the engine and what
+  // that source names by sibling path. tabnas-lsp names only the
+  // engine: its optional dialect and fleet crates are path dependencies
+  // too, but cargo resolves a git dependency's optional path
+  // dependencies only for the features a consumer turns on, and this
+  // crate turns none on (a grammar's crate is linked directly). The
+  // grammar crate names the engine, the layer the registry's base chain
+  // puts under it, and whatever else its manifest names by path
+  // (RUST_FLEET_DEPS for a fleet crate), each of those its own the same
+  // way, and a chain stops at the first crate taken from a path.
   const tables = []
-  if (!paths.has(lsp.crate)) tables.push({ source: lsp, names: [parser] })
+  const table = (source) => {
+    let found = tables.find((t) => t.source.crate === source.crate)
+    if (!found) {
+      found = { source, names: [parser] }
+      tables.push(found)
+    }
+    return found
+  }
+  const name = (t, dep) => {
+    if (!t.names.some((d) => d.crate === dep.crate)) t.names.push(dep)
+  }
+  if (!paths.has(lsp.crate)) table(lsp)
   if (plugin) {
-    const chain = [plugin, ...layers]
-    for (let i = 0; i < chain.length && !paths.has(chain[i].crate); i++) {
-      tables.push({ source: chain[i], names: [parser, ...chain.slice(i + 1, i + 2)] })
+    const below = new Map(layers.map((l, i) => [l.crate, layers[i + 1]]))
+    below.set(plugin.crate, layers[0])
+    const queue = [plugin]
+    const seen = new Set()
+    while (0 < queue.length) {
+      const source = queue.shift()
+      if (seen.has(source.crate) || paths.has(source.crate)) continue
+      seen.add(source.crate)
+      const own = table(source)
+      const deps = []
+      if (below.get(source.crate)) deps.push(below.get(source.crate))
+      const short = shortOf(source)
+      if (short) for (const dep of RUST_FLEET_DEPS[short]) deps.push(fleetCrate(dep))
+      for (const dep of deps) {
+        name(own, dep)
+        queue.push(dep)
+      }
     }
   }
 
