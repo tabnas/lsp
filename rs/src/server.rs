@@ -60,7 +60,7 @@
 //!   the client closes the stream without `exit`, as
 //!   `vscode-languageserver` does.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -121,6 +121,10 @@ pub struct Server {
     analyses: HashMap<String, (i64, Analysis)>,
     /// Documents due for analysis, by URI, with their deadlines.
     pending: HashMap<String, Instant>,
+    /// The documents whose last published diagnostics may be non-empty,
+    /// to be cleared when a document stops being served (its route
+    /// removed by a manifest change) or closes.
+    published: HashSet<String>,
     encoding: PositionEncoding,
     workspace_folders: Vec<PathBuf>,
     /// `initializationOptions.languages`, stamped, kept to rebuild the
@@ -173,6 +177,7 @@ impl Server {
             instances: Instances::new(make),
             analyses: HashMap::new(),
             pending: HashMap::new(),
+            published: HashSet::new(),
             encoding: PositionEncoding::Utf16,
             workspace_folders: Vec::new(),
             init_languages: Vec::new(),
@@ -311,6 +316,7 @@ impl Server {
                     self.docs.close(&uri);
                     self.analyses.remove(&uri);
                     self.pending.remove(&uri);
+                    self.published.remove(&uri);
                     self.conn.notify(
                         "textDocument/publishDiagnostics",
                         json!({ "uri": uri, "diagnostics": [] }),
@@ -642,11 +648,21 @@ impl Server {
             return Ok(());
         };
         let Some(entry) = self.router.resolve(&doc.language_id, &doc.uri).entry else {
+            // No route, so nothing to say about the document: what was
+            // said while it had one is withdrawn, since a manifest change
+            // can take a language away from an open document.
+            if self.published.remove(uri) {
+                return self.conn.notify(
+                    "textDocument/publishDiagnostics",
+                    json!({ "uri": uri, "version": doc.version, "diagnostics": [] }),
+                );
+            }
             return Ok(());
         };
         if let Some(limit) = self.config.max_document_bytes {
             if doc.text.len() > limit {
                 self.analyses.remove(uri);
+                self.published.insert(uri.to_string());
                 let diagnostic = too_large(entry, doc.text.len(), limit);
                 return self.conn.notify(
                     "textDocument/publishDiagnostics",
@@ -691,6 +707,11 @@ impl Server {
         };
         let version = doc.version;
         // Version-stamped push: stale results never land on newer content.
+        if analysis.diagnostics.is_empty() {
+            self.published.remove(uri);
+        } else {
+            self.published.insert(uri.to_string());
+        }
         self.conn.notify(
             "textDocument/publishDiagnostics",
             json!({ "uri": uri, "version": version, "diagnostics": analysis.diagnostics }),
@@ -910,9 +931,15 @@ impl std::fmt::Debug for Server {
 }
 
 /// Run a server over standard input and output until the client is
-/// done (`Serve` in Go; `startServer` in TypeScript).
-pub fn serve(config: Config) -> Result<(), RpcError> {
-    Server::new(config, Connection::stdio()).run()
+/// done (`Serve` in Go; `startServer` in TypeScript). `true` when the
+/// client asked for `shutdown` before the session ended, `false` when
+/// it sent `exit` alone or closed the stream: the protocol's exit
+/// status is 0 for the first and 1 for the second, which is what the
+/// `tabnas-lsp` binary and a generated server report.
+pub fn serve(config: Config) -> Result<bool, RpcError> {
+    let mut server = Server::new(config, Connection::stdio());
+    server.run()?;
+    Ok(server.shutdown_requested())
 }
 
 /// Read a folder's `.tabnas/lsp.json`: `{"languages": [entry, ...]}`,

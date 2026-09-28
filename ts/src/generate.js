@@ -600,8 +600,29 @@ const RUST_CRATE = /^[A-Za-z_][A-Za-z0-9_-]*$/
 // `grammar::make`.
 const RUST_FN_PATH = /^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$/
 // The binary is the command editors launch, so it is the language id
-// plus `-lsp` exactly, and must be a plain file name.
-const RUST_BIN = /^[A-Za-z0-9_][A-Za-z0-9._+-]*$/
+// plus `-lsp` exactly, and must be a plain file name that cargo takes as
+// a target name: letters, digits, `_` and `-` (a `.` or a `+` in a
+// target name is refused by cargo before anything compiles).
+const RUST_BIN = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/
+
+// Every crate rs/Cargo.toml names by sibling path under a feature (the
+// dialect compilers and the fleet grammars), and what each of THOSE
+// names by sibling path in turn. Cargo reads every path dependency's
+// manifest to resolve, feature on or off, so a git checkout of
+// tabnas-lsp needs each of them supplied from its own repository, and
+// each of them its own siblings: a [patch] table per repository. Every
+// sibling names the engine as well. ts/test/generate.test.js holds the
+// list to rs/Cargo.toml, and the map to the sibling checkouts when they
+// are present.
+const RUST_SIBLINGS = ['abnf', 'ebnf', 'gbnf', 'csv', 'feed', 'ini', 'json',
+  'json5', 'jsonc', 'jsonic', 'jsonl', 'toml', 'xml', 'yaml', 'zon']
+const RUST_SIBLING_DEPS = {
+  abnf: ['bnf'], ebnf: ['bnf'], gbnf: ['bnf'], bnf: [],
+  csv: ['jsonic'], feed: ['jsonic', 'xml'], ini: ['jsonic', 'hoover'],
+  json: [], json5: ['jsonic'], jsonc: ['jsonic'], jsonic: ['json'],
+  jsonl: ['json'], toml: ['jsonic'], xml: ['jsonic'], yaml: ['jsonic'],
+  zon: ['jsonic'], hoover: [],
+}
 
 // rustfmt's defaults, which the emitted Rust follows so that a `cargo
 // fmt` in the generated crate changes nothing: 100 columns a line, and
@@ -737,8 +758,8 @@ function emitRustServer(lang, opts, files) {
   if (!RUST_BIN.test(bin)) {
     throw new GenerateError(
       "cannot name a binary after '" + lang.id + "': editors launch '" + bin +
-        "', which is not a plain file name — pass a --language-id of " +
-        'letters, digits, and . _ + -')
+        "', which is not a name cargo gives a binary — pass a --language-id " +
+        'of letters, digits, _ and -')
   }
   const crate = opts.rustCrate ||
     (lang.id + '-lsp').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/-+/g, '-')
@@ -809,11 +830,18 @@ function emitRustServer(lang, opts, files) {
     }
   }
 
+  // The siblings tabnas-lsp itself names by path, each from its own
+  // repository, and each with a table of its own for the siblings it
+  // names (RUST_SIBLING_DEPS), the engine in every one.
+  const sibling = (short) => ({ crate: 'tabnas-' + short,
+    git: 'https://github.com/tabnas/' + short })
+
   // Local checkouts in place of git sources (`--rust-path crate=dir`),
   // the counterpart of Go's replace directives. A crate taken from a
   // path resolves its own siblings by path, so it needs no patch table.
   const known = [lsp.crate, parser.crate, ...(plugin ? [plugin.crate] : []),
-    ...layers.map((l) => l.crate)]
+    ...layers.map((l) => l.crate),
+    ...Object.keys(RUST_SIBLING_DEPS).map((short) => 'tabnas-' + short)]
   const paths = new Map()
   for (const p of opts.rustPath || []) {
     const eq = String(p).indexOf('=')
@@ -832,15 +860,48 @@ function emitRustServer(lang, opts, files) {
       (dep.rev ? ', rev = ' + tomlStr(dep.rev) : '') + ' }'
 
   // The [patch] tables: one per git source, naming the engine and the
-  // next layer down. tabnas-lsp names only the engine; the grammar crate
-  // and each layer name the engine and the layer below, and the chain
-  // stops at the first crate taken from a path.
+  // siblings that source names by path. tabnas-lsp names the engine and
+  // its optional dialect and fleet crates; each of those names the
+  // engine and its own siblings; the grammar crate and each layer name
+  // the engine and the layer below. A chain stops at the first crate
+  // taken from a path, and a source gets one table however many chains
+  // reach it.
   const tables = []
-  if (!paths.has(lsp.crate)) tables.push({ source: lsp, names: [parser] })
+  const table = (source) => {
+    let found = tables.find((t) => t.source.crate === source.crate)
+    if (!found) {
+      found = { source, names: [parser] }
+      tables.push(found)
+    }
+    return found
+  }
+  const name = (t, dep) => {
+    if (!t.names.some((d) => d.crate === dep.crate)) t.names.push(dep)
+  }
+  if (!paths.has(lsp.crate)) {
+    const root = table(lsp)
+    const queue = []
+    for (const short of RUST_SIBLINGS) {
+      name(root, sibling(short))
+      queue.push(short)
+    }
+    const seen = new Set()
+    while (0 < queue.length) {
+      const short = queue.shift()
+      if (seen.has(short) || paths.has('tabnas-' + short)) continue
+      seen.add(short)
+      const own = table(sibling(short))
+      for (const dep of RUST_SIBLING_DEPS[short] || []) {
+        name(own, sibling(dep))
+        queue.push(dep)
+      }
+    }
+  }
   if (plugin) {
     const chain = [plugin, ...layers]
     for (let i = 0; i < chain.length && !paths.has(chain[i].crate); i++) {
-      tables.push({ source: chain[i], names: [parser, ...chain.slice(i + 1, i + 2)] })
+      const own = table(chain[i])
+      for (const next of chain.slice(i + 1, i + 2)) name(own, next)
     }
   }
 
@@ -907,7 +968,10 @@ function emitRustServer(lang, opts, files) {
       ...(source === lsp
         ? ['# tabnas-lsp names the engine by sibling path (../../parser/rs),',
           '# which cargo reads inside a git checkout as a package of that',
-          '# same repository; this table supplies it from its own.']
+          '# same repository, and its optional dialect and fleet crates the',
+          '# same way, read to resolve whether or not a feature is on; this',
+          '# table supplies each from its own repository, and the tables',
+          '# below supply what each of them names.']
         : source === plugin
           ? ['# The grammar crate names the engine by sibling path too, and',
             '# the grammar it is layered on (the registry base chain), each',
@@ -939,7 +1003,13 @@ function emitRustServer(lang, opts, files) {
   ]
   const serve = [
     '    match tabnas_lsp::serve(config) {',
-    '        Ok(()) => ExitCode::SUCCESS,',
+    '        Ok(true) => ExitCode::SUCCESS,',
+    '        // The protocol: `exit` without `shutdown`, or a closed stream,',
+    '        // ends the process with status 1.',
+    '        Ok(false) => {',
+    '            eprintln!(' + rustStr(bin + ': the session ended without shutdown') + ');',
+    '            ExitCode::FAILURE',
+    '        }',
     '        Err(error) => {',
     // RUST_BIN admits no brace, so the name is safe in a format string.
     '            eprintln!(' + rustStr(bin + ': {error}') + ');',

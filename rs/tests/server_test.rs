@@ -1146,6 +1146,50 @@ fn a_client_language_routes_in_every_folder_and_for_non_file_documents() {
 }
 
 #[test]
+fn a_manifest_change_that_unroutes_a_document_withdraws_its_diagnostics() {
+    let ws = TempDir::new("unroute");
+    ws.write(
+        ".tabnas/lsp.json",
+        &json!({"languages": [json_language("gone", ".gone")]}).to_string(),
+    );
+    let ws_uri = file_uri(&ws.0);
+    let (mut server, out) = library_server(loader_config());
+    initialize(&mut server, json!({"workspaceFolders": [{"uri": ws_uri}]}));
+    let uri = format!("{ws_uri}/d.gone");
+    open(&mut server, &uri, "gone", 1, BROKEN);
+    server.flush().unwrap();
+    let published = out.publishes(&uri);
+    assert!(
+        !published.last().unwrap()["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "{published:?}"
+    );
+
+    // The manifest drops the language and the watcher reports it: the
+    // document is served by nothing now, and what was said about it
+    // while it was is withdrawn, stamped with its version.
+    ws.write(".tabnas/lsp.json", &json!({"languages": []}).to_string());
+    let change = json!({"changes": [{"uri": format!("{ws_uri}/.tabnas/lsp.json"), "type": 2}]});
+    notify(
+        &mut server,
+        "workspace/didChangeWatchedFiles",
+        change.clone(),
+    );
+    server.flush().unwrap();
+    let last = out.publishes(&uri).last().cloned().unwrap();
+    assert_eq!(last["diagnostics"], json!([]), "{last}");
+    assert_eq!(last["version"], json!(1), "{last}");
+
+    // Withdrawn once: an unserved document is not published again.
+    let count = out.publishes(&uri).len();
+    notify(&mut server, "workspace/didChangeWatchedFiles", change);
+    server.flush().unwrap();
+    assert_eq!(out.publishes(&uri).len(), count);
+}
+
+#[test]
 fn a_folder_manifest_stays_scoped_to_its_folder() {
     let alpha = TempDir::new("scoped");
     alpha.write(

@@ -282,7 +282,18 @@ resolve.
 A git dependency works the same way: `tabnas-lsp = { git =
 "https://github.com/tabnas/lsp" }` with a `[patch]` entry redirecting
 `tabnas` at your own checkout or git reference. The library needs no
-feature; a host never links the fleet.
+feature; a host never links the fleet. But cargo reads every path
+dependency's manifest to resolve, feature on or off, so a git consumer
+must also supply the optional dialect and fleet crates the manifest
+names (`tabnas-abnf` … `tabnas-zon`, each from its own repository under
+`[patch."https://github.com/tabnas/lsp"]`) and what each of those names
+by path in turn (the engine everywhere; `tabnas-bnf` under the three
+compilers; `tabnas-jsonic` under csv, feed, ini, json5, jsonc, toml,
+xml, yaml and zon; `tabnas-json` under jsonic and jsonl; `tabnas-xml`
+under feed; `tabnas-hoover` under ini), a table per repository. The
+generator's Rust target writes exactly these tables
+(`tabnas-lsp-gen --runtime rust`), so a generated crate is the shortest
+way to a manifest that resolves.
 
 ## Test
 

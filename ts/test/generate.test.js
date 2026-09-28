@@ -371,6 +371,11 @@ describe('generate-rust', () => {
     assert.ok(main.includes(
       'entry_from_spec_json("mydsl", &[".mydsl"], GRAMMAR)'), main)
     assert.ok(main.includes('tabnas_lsp::serve(config)'), main)
+    // The protocol's exit status: 0 after shutdown, 1 after exit alone or
+    // a closed stream, as the repository's own binary reports it.
+    assert.ok(main.includes('Ok(true) => ExitCode::SUCCESS'), main)
+    assert.ok(main.includes('Ok(false) => {'), main)
+    assert.ok(main.includes('the session ended without shutdown'), main)
     assert.ok(!/analy[sz]e|semantic|outline/.test(main),
       'no pipeline logic in the wrapper:\n' + main)
     assert.deepStrictEqual(
@@ -450,6 +455,73 @@ describe('generate-rust', () => {
     assert.match(pinned, /pinned/)
   })
 
+  it('supplies every optional sibling of rs/Cargo.toml, and what each names, from git', (t) => {
+    const out = tmp('gen-rssib-')
+    generate({
+      out, input: { spec: SPEC_FILE }, languageId: 'mydsl',
+      runtime: 'rust', editors: [],
+    })
+    const cargo = cargoToml(out)
+    // The tables, as written: one per repository, the engine first.
+    const tables = new Map()
+    for (const block of cargo.split('\n[patch.').slice(1)) {
+      const lines = block.split('\n')
+      const source = /^"([^"]+)"\]/.exec(lines[0])[1]
+      const names = []
+      for (const line of lines.slice(1)) {
+        const dep = /^([A-Za-z0-9_-]+) = \{ git = "([^"]+)"/.exec(line)
+        if (!dep) break
+        names.push({ crate: dep[1], git: dep[2] })
+      }
+      tables.set(source, names)
+    }
+    // Every optional path dependency of rs/Cargo.toml, under the lsp table,
+    // from its own repository; nothing else is optional there.
+    const rsToml = fs.readFileSync(path.join(REPO, 'rs', 'Cargo.toml'), 'utf8')
+    const optional = [...rsToml.matchAll(
+      /^(tabnas-[a-z0-9]+) = \{ path = "\.\.\/\.\.\/([a-z0-9]+)\/rs", optional = true \}/gm)]
+      .map((m) => ({ crate: m[1], short: m[2] }))
+    assert.ok(12 < optional.length, 'rs/Cargo.toml optional siblings: ' + optional.length)
+    const lsp = tables.get('https://github.com/tabnas/lsp')
+    assert.ok(lsp, 'no lsp table:\n' + cargo)
+    assert.deepStrictEqual(lsp[0], { crate: 'tabnas', git: 'https://github.com/tabnas/parser' })
+    for (const { crate, short } of optional) {
+      assert.ok(lsp.some((d) => d.crate === crate && d.git === 'https://github.com/tabnas/' + short),
+        crate + ' missing from the lsp table:\n' + cargo)
+    }
+    assert.equal(lsp.length, 1 + optional.length, 'the lsp table names more than rs/Cargo.toml:\n' + cargo)
+    // Each sibling has a table naming the engine and its own siblings;
+    // checked against the sibling checkouts where the fleet layout has
+    // them, and against the generator's map otherwise.
+    let checked = 0
+    for (const [source, names] of tables) {
+      if (source === 'https://github.com/tabnas/lsp') continue
+      const short = source.slice('https://github.com/tabnas/'.length)
+      assert.deepStrictEqual(names[0], { crate: 'tabnas', git: 'https://github.com/tabnas/parser' }, source)
+      const manifest = path.join(REPO, '..', short, 'rs', 'Cargo.toml')
+      if (!fs.existsSync(manifest)) continue
+      const deps = fs.readFileSync(manifest, 'utf8').split(/^\[/m)
+        .find((section) => section.startsWith('dependencies]')) || ''
+      const wanted = [...deps.matchAll(/^(tabnas(?:-[a-z0-9]+)?) = \{ path = "\.\.\/\.\.\/([a-z0-9]+)\/rs"/gm)]
+        .map((m) => m[1]).sort()
+      assert.deepStrictEqual(names.map((d) => d.crate).sort(), wanted,
+        short + ': the generator\'s sibling map drifted from ' + manifest)
+      checked++
+    }
+    if (0 === checked) t.diagnostic('no sibling checkouts beside this one: the sibling map was not checked against them')
+    // A sibling taken from a path needs no table, and neither does what
+    // only it names.
+    const local = tmp('gen-rssibl-')
+    generate({
+      out: local, input: { spec: SPEC_FILE }, languageId: 'mydsl',
+      runtime: 'rust', editors: [], rustPath: ['tabnas-ini=../ini/rs'],
+    })
+    const localCargo = cargoToml(local)
+    assert.ok(!localCargo.includes('[patch."https://github.com/tabnas/ini"]'), localCargo)
+    assert.ok(!localCargo.includes('[patch."https://github.com/tabnas/hoover"]'), localCargo)
+    assert.ok(localCargo.includes('[patch."https://github.com/tabnas/jsonic"]'), localCargo)
+  })
+
   it('refuses a TS module for the Rust runtime with the fix named', () => {
     assert.throws(
       () => generate({
@@ -527,11 +599,15 @@ describe('generate-rust', () => {
     assert.ok(pinned.main.includes('Arc::new(tabnas_foolang::make_json)'), pinned.main)
 
     // A local checkout resolves its own siblings by path, so it needs no
-    // patch table, and neither do the layers under it.
+    // patch table. The layer under it keeps its table here, because
+    // tabnas-lsp, still from git, names jsonic as a fleet sibling too.
     const local = gen({ rustPath: ['tabnas-foolang=../foolang/rs'] })
     assert.ok(local.cargo.includes('tabnas-foolang = { path = "../foolang/rs" }'), local.cargo)
     assert.ok(!local.cargo.includes('[patch."https://github.com/tabnas/foolang"]'), local.cargo)
-    assert.ok(!local.cargo.includes('[patch."https://github.com/tabnas/jsonic"]'), local.cargo)
+    assert.ok(local.cargo.includes('[patch."https://github.com/tabnas/jsonic"]'), local.cargo)
+    // With tabnas-lsp from a path as well, nothing needs a table.
+    const allLocal = gen({ rustPath: ['tabnas-foolang=../foolang/rs', 'tabnas-lsp=' + RS] })
+    assert.ok(!allLocal.cargo.includes('[patch.'), allLocal.cargo)
 
     // Outside the fleet's naming, the repository must be given.
     assert.throws(() => gen({ rustPlugin: 'foolang' }), /--rust-plugin-git/)
@@ -561,8 +637,11 @@ describe('generate-rust', () => {
       JSON.parse(fs.readFileSync(path.join(out, 'server', 'grammar.json'), 'utf8')), spec)
     assert.ok(mainRs(out).includes(
       'entry_from_spec_json("mydsl", &[".mydsl"], GRAMMAR)'))
-    // Only tabnas-lsp: the dialect compiler ran here, not in the server.
-    assert.ok(!/abnf|bnf/.test(cargoToml(out)), cargoToml(out))
+    // Only tabnas-lsp is depended on: the dialect compiler ran here, not
+    // in the server (the patch tables below the dependencies name the
+    // dialect crates because tabnas-lsp's manifest does, feature or not).
+    const deps = cargoToml(out).split('\n[patch.')[0]
+    assert.ok(!/abnf|bnf/.test(deps), deps)
 
     assert.throws(
       () => generate({
@@ -586,11 +665,13 @@ describe('generate-rust', () => {
     const named = gen({ languageId: '9lang', rustCrate: 'lang9-lsp' })
     assert.ok(named.cargo.includes('name = "lang9-lsp"'), named.cargo)
     assert.ok(named.cargo.includes('[[bin]]\nname = "9lang-lsp"'), named.cargo)
-    // The binary is the command editors launch: a plain file name.
+    // The binary is the command editors launch: a plain file name, and
+    // one cargo takes as a target name (it refuses a `.` or a `+`).
     assert.throws(() => gen({ languageId: 'my dsl' }), /--language-id/)
     assert.throws(() => gen({ languageId: 'a/b' }), /--language-id/)
-    // Characters outside a package name become hyphens.
-    assert.ok(gen({ languageId: 'c++' }).cargo.includes('name = "c-lsp"'))
+    assert.throws(() => gen({ languageId: 'c++' }), /--language-id/)
+    assert.throws(() => gen({ languageId: 'a.b' }), /--language-id/)
+    assert.ok(gen({ languageId: 'c_v2-x' }).cargo.includes('[[bin]]\nname = "c_v2-x-lsp"'))
     // Unknown crates and malformed overrides name what is accepted.
     assert.throws(() => gen({ languageId: 'x', rustPath: ['nope=/x'] }),
       /--rust-path 'nope=\/x'.*tabnas-lsp, tabnas/)
