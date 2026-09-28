@@ -1,7 +1,7 @@
 # Build and test the language server's runtimes: the TypeScript
 # package (ts/, canonical), the Go module (go/, mirrors it by fixture
-# parity) and the Rust crate (rs/, the semantic-token half of the
-# pipeline, mirrored the same way). The TS side ships plain CommonJS —
+# parity) and the Rust crate (rs/, the whole pipeline and the unified
+# server, mirrored the same way). The TS side ships plain CommonJS —
 # there is no build step; `build` exists for fleet-uniform target names.
 #
 # Local test resolves the engine from the sibling checkout: ts/ via

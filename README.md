@@ -34,7 +34,8 @@ per-language feature code.
 | [`AGENTS.md`](AGENTS.md) | working in this repo: layout, contracts, commands |
 | [`ts/`](ts/) | canonical TypeScript package `@tabnas/lsp` (server, loaders, generator) |
 | [`go/`](go/) | Go port `github.com/tabnas/lsp/go` (pipeline + stdio server library) |
+| [`rs/`](rs/) | Rust port, crate `tabnas-lsp`: the pipeline as a library for Rust hosts, and the unified `tabnas-lsp` server |
 | [`editors/`](editors/) | generated multi-language editor plugins for the unified server |
-| [`test/fixtures/`](test/fixtures/) | cross-runtime conformance fixtures (the TS↔Go parity contract) |
+| [`test/fixtures/`](test/fixtures/) | cross-runtime conformance fixtures (the TS↔Go↔Rust parity contract) |
 
 Part of the [tabnas](https://tabnas.dev) project. MIT licensed.

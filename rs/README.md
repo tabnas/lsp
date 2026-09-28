@@ -17,7 +17,7 @@ so that `tabnas-lsp --stdio` runs where Node does not.
 
 One module per part of the canonical pipeline (design
 [`doc/design.md`](../doc/design.md) §3, §8, §9, §11), the shared types
-in one place, and a thin binary. Status as of this commit:
+in one place, and a thin binary. Every part is complete:
 
 | Module | Mirrors | Contract | Status |
 |---|---|---|---|
@@ -26,21 +26,16 @@ in one place, and a thin binary. Status as of this commit:
 | `instances` | `ts/src/instances.js`, `go/core.go` | one instance per cache key; the ONE permanent mux subscriber pair; serialized parses with an active collector; quarantine after 3 failures; invalidation on reload | complete: parses serialized across threads by a re-entrant gate, a panicking `MakeInstance` counted toward quarantine; tested against the fixture grammar |
 | `trace` | `ts/src/core.js` `reconcile` | the `subscribe_lex` collector and the reconciliation contract | complete, fixture-tested |
 | `semantic` | `ts/src/core.js` `tokenType`, `semanticTokens` | the CANON map, prefix conventions, fixed legend, LSP tokens, delta encoding | complete, fixture-tested |
-| `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens (in the document's encoding), outline, the reconciled trace | complete: fixture-tested, and equal to the TypeScript pipeline on 2,000 random documents wherever the two engines agree on the parse |
-| `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment, at the engine's columns | complete, fixture-tested; nesting bounded at `MAX_OUTLINE_DEPTH` (256) so no document can exhaust a stack, a bound TypeScript does not have |
+| `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens (in the document's encoding), outline, the reconciled trace | complete: fixture-tested, and equal to the TypeScript pipeline on every document of the random sweep (below) wherever the two engines agree on the parse, and on every document when both are fed the TypeScript engine's events |
+| `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment, at the engine's columns | complete: the `outlines` fixture section pins whole symbol trees, ranges included; nesting bounded at `MAX_OUTLINE_DEPTH` (256) so no document can exhaust a stack, a bound TypeScript does not have |
 | `hover` | `ts/src/server.js` `onHover` | the token under the cursor (`token_at`, `token_range`) and its description (TypeScript answers `null` today; parity means `None` until it ships) | complete |
-| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations of the text before the cursor as items, sentinels filtered, fixed source as label, under the parse lock | complete: fixture-tested; the TypeScript items, in order, pinned at the start, middle and end of a document, inside tokens and in both encodings; equal to the TypeScript core on 384 random cursors except where the prefix ends inside a string, an engine divergence registered in `tests/completion_test.rs` |
+| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations of the text before the cursor as items, sentinels filtered, fixed source as label, under the parse lock | complete: fixture-tested; the TypeScript items, in order, pinned at the start, middle and end of a document, inside tokens and in both encodings; equal to the TypeScript core at every random cursor of the sweep except where the prefix ends inside an unterminated string or block comment, an engine divergence registered in `tests/completion_test.rs` |
 | `registry` | `ts/src/registry.js`, `go/registry.go` | the embedded `ts/data/registry.json`; the tiers (`Router`); routing by language id and extension, folder-scoped workspace entries, ties surfaced | complete: routing case for case with the TypeScript suites; the collision policy read from the generated file, never copied; media types a host lookup (`resolve_media_type`, and last in `resolve_with_media_type`), never the server's routing, as in TypeScript; hot reload's entry points (`set_workspace`, `reloaded_by`) |
 | `loaders` | `ts/src/loaders.js` | L1 linked grammars, L2 specs, L3 dialect text; the grammar firewall and its caps; the sandbox; `Loader` as the binary's `MakeInstance` | complete: the firewall rule for rule with the TypeScript limits and messages, one test per refusal, its builtin set asked of the engine; the sandbox on real paths; L3 lowers all three dialects to pure data, where TypeScript refuses every `.ebnf` and `.gbnf` file (a TypeScript defect, reported) |
 | `jsonrpc` | `go/jsonrpc.go` | Content-Length framing; `Message`; a `Connection` with a reader thread, a locked writer and `recv_timeout` for the debounce | complete; malformed input is answered (`ParseError`, `InvalidRequest`) or logged, never fatal |
 | `server` | `ts/src/server.js`, `go/server.go` | capabilities; incremental sync; 150 ms debounce; version-stamped push diagnostics; stale results suppressed; `tabnas/status`; workspace grammars and hot reload; negotiated encoding, document size cap and parse deadline | complete; `tests/server_test.rs` drives the built binary through a scripted session |
 | `highlight` | (Rust hosts only) | `highlight()` and `Highlighter`: parse and return byte spans to colour | complete, fixture-tested |
 | `src/bin/tabnas-lsp.rs` | `ts/bin/tabnas-lsp.js` | `--stdio`, `--version`, `--help`; builds `Config` from the bundled registry and the loader | complete; exits 0 after `shutdown`, 1 otherwise, as `vscode-languageserver` does |
-
-A stub is a `todo!()` body under the module's contract in its doc
-comment. Every public signature above is fixed: the module agents fill
-bodies without changing them, and a signature change is a change to
-this table.
 
 ### Features
 
@@ -148,14 +143,64 @@ The LSP form is beside the spans: `result.tokens` holds one
 `SemanticToken` per span and `tabnas_lsp::encode(&result.tokens)` is the
 `data` array a server would send.
 
-The full pipeline, once the stubs are filled, is the same shape the Go
-port offers: build an `Entry` for the language, an `Instances` over a
-`MakeInstance` that returns a parser with the grammar installed and
-recovery enabled, and call `analyze(&instances, &inst, &entry, &doc)`
-for diagnostics, semantic tokens and outline together, `completion` for
-items at a position, and `hover` for the token under the cursor. A host
-that wants the server rather than the library builds a `Config` and
-calls `server::serve`.
+The full pipeline is the shape the Go port offers: an `Entry` for the
+language, an `Instances` over a `MakeInstance` that returns a parser
+with the grammar installed and recovery enabled, then
+`analyze(&instances, &inst, &entry, &doc)` for diagnostics (every
+recovered error), semantic tokens and outline from one parse,
+`completion` for the items at a position, and `hover` for the token
+under the cursor:
+
+```rust
+use std::sync::Arc;
+
+use tabnas::{Options, Tabnas};
+use tabnas_lsp::{analyze, completion, Doc, Entry, Instances, LoadError, MakeInstance, Position};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let spec = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../test/fixtures/json-grammar.json"
+    ))?;
+    // The host decides what a language is: here, the shared grammar
+    // with recovery on, so one parse reports every error.
+    let make: MakeInstance = Arc::new(move |_entry: &Entry| {
+        let mut options = Options::default();
+        options.parse.recover.enabled = true;
+        let mut parser = Tabnas::with_options(options);
+        parser
+            .grammar_json(&spec)
+            .map_err(|e| LoadError::new(e.to_string()))?;
+        Ok(parser)
+    });
+    let mut instances = Instances::new(make);
+    let mut entry = Entry::new("jsonf");
+    entry.language_id = Some("jsonf".into());
+    let inst = instances.get(&entry, None)?.expect("not quarantined");
+
+    let text = "{\"a\":true blah,\"b\":[1,2] blah}";
+    let doc = Doc::new("file:///t.jsonf", "jsonf", 1, text);
+    let analysis = analyze(&instances, &inst, &entry, &doc);
+    let codes: Vec<&str> = analysis
+        .diagnostics
+        .iter()
+        .filter_map(|d| d.code.as_deref())
+        .collect();
+    assert_eq!(codes, ["unexpected", "unexpected"]);
+    assert_eq!(analysis.outline[0].name, "Object");
+    assert_eq!(analysis.outline[0].children[0].name, "Array");
+
+    let after_key = Doc::new("file:///t.jsonf", "jsonf", 2, "{\"a\"");
+    let items = completion(Some(&instances), &inst, &entry, &after_key, Position::new(0, 4));
+    assert_eq!(items[0].label, ":");
+    Ok(())
+}
+```
+
+Positions are UTF-16 code units, the protocol default; a document built
+`with_encoding(PositionEncoding::Utf8)` is measured in bytes instead. A
+host that wants the server rather than the library builds a `Config`
+and calls `server::serve`.
 
 ## Parity
 
@@ -163,11 +208,54 @@ calls `server::serve`.
 `ts/test/conformance.test.js`, `go/conformance_test.go` and
 `rs/tests/conformance_test.rs`, one runner per section: `analyze`
 (diagnostic codes in order, the first diagnostic's range, the outline's
-name tree), `completions` (sorted labels at a position) and `semantic`
-(error count, decoded tokens, delta-encoded data). All three runners
-pass. Values come from the TypeScript pipeline; when this crate
+name tree), `completions` (sorted labels at a position), `outlines`
+(whole symbol trees, ranges included) and `semantic` (error count,
+decoded tokens, delta-encoded data). All three runtimes pass every
+section. Values come from the TypeScript pipeline; when this crate
 disagrees, this crate changes, and a TypeScript defect is reported, not
 papered over.
+
+The fixtures pin chosen cases; `tests/parity_sweep.rs` finds the ones
+nobody chose. It is ignored in the ordinary suite because it needs node
+and the ts/ package installed (`cd ts && npm install`):
+
+```bash
+cd rs
+cargo test --test parity_sweep -- --ignored --nocapture
+```
+
+It generates seeded random documents (valid, invalid, multi-error,
+multi-byte, multi-line, with comments; under a plain entry, one with
+outline and token overrides, and a fail-fast one; three completion
+positions each), answers them with `ts/src/core.js` and with this crate,
+and compares diagnostics (every field), outlines (whole trees), token
+data, `failed` and completion items. Each side also reports its
+ENGINE's raw view of the parse in code points, so a difference is
+classified: the port's when the engines agree, the engine's when they
+do not. And this crate's pipeline functions are fed the TypeScript
+engine's own events, which must give the TypeScript results whatever
+the engines do. Seeds 1 to 4, 300 documents and 900 positions each:
+no port mismatch, and the pipeline over the TypeScript events agrees
+on every document.
+
+What remains are ENGINE divergences (TypeScript and Rust engines at the
+same release, the shared grammar), which belong to the parser repository
+and are not papered over here. Each reproduces with the engine alone:
+
+| Input | TypeScript engine | Rust engine |
+|---|---|---|
+| a completion prefix ending inside an unterminated string or block comment: `{"`, `[/*` | the start rule's openers `#NR #ST #VL #OB #OS` | the enclosing container's continuations: `#NR #ST #VL #CB`, or `... #OB #OS #CS` in a list |
+| `"\n1]` (an `unprintable` character in a string) | the parse ends there: one error | parsing resumes after it: value `1`, a second error (`unexpected ]`) |
+| `/*cccccccccccccccc}` (an unterminated block comment) | the bad token stops at 18 code points and `}` lexes on | the bad token runs to the end of the source (`len` 19) |
+| `"\n`, `/*\n` | the message's source excerpt indents each continuation line by two spaces (`unprintable character: \n` and two spaces) | no indent |
+| `{"":}` | recovered value `{}` | `{"": null}` |
+| ` [] [` (trailing content) | the root rule's close `ruleDone` fires twice | once |
+| `/*[]` with recovery off | the bad token reaches `lex` subscribers, and the open rule's `ruleDone` fires | neither |
+
+Only the first four change what a client sees (completion items;
+diagnostics, outline and token data; ranges and tokens; messages).
+TypeScript is canonical, so each is a Rust engine bug unless the parser
+maintainer rules the TypeScript behaviour the defect.
 
 ## Install
 
@@ -205,4 +293,6 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 `ci/rust/run.sh` runs the same commands through the MSRV toolchain
 (`rust-version` in `Cargo.toml`), checks that every sibling the manifest
-names is present, checks the lock, and is what CI runs.
+names is present, checks the lock, and is what CI runs. The random
+sweep against the TypeScript core (see Parity) is run by hand:
+`cargo test --test parity_sweep -- --ignored --nocapture`.
