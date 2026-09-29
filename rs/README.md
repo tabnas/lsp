@@ -271,7 +271,7 @@ and point at both:
 ```toml
 [dependencies]
 tabnas-lsp = { path = "../lsp/rs" }
-tabnas = { path = "../parser/rs" }
+tabnas = { package = "tabnas-parser", path = "../parser/rs" }
 ```
 
 Both entries are needed. A crate's dependencies are not passed on to its

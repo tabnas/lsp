@@ -56,7 +56,7 @@ fleet = [
 # development model: clone https://github.com/tabnas/parser next to this
 # repo. The `tabnas` crate is not published, so there is no registry
 # version to fall back on.
-tabnas = { path = "../../parser/rs" }
+tabnas = { package = "tabnas-parser", path = "../../parser/rs" }
 # The registry (ts/data/registry.json, embedded), the conformance fixtures
 # (test/fixtures/*.json), grammar specs, workspace manifests and the
 # JSON-RPC messages are all read and written with serde.

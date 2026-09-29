@@ -5,7 +5,7 @@
 # is the full gate.
 #
 # The engine is a PATH DEPENDENCY on the sibling checkout
-# (rs/Cargo.toml: `tabnas = { path = "../../parser/rs" }`), and so are the
+# (rs/Cargo.toml: `tabnas = { package = "tabnas-parser", path = "../../parser/rs" }`), and so are the
 # BNF-dialect compilers behind the `dialects` feature and the fleet
 # grammars behind `fleet`. None of these crates is published, so there is
 # no registry version to fall back on, and cargo reads EVERY path

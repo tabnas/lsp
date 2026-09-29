@@ -134,7 +134,7 @@ The TS package resolves the engine from the sibling checkout
 `cd ../parser/ts && npm i && npm run build`. The Go module's engine
 floor is the released `go/v0.9.0`; `make go-work` (implied by
 `test-go`) points it at the sibling checkout instead. The Rust crate
-takes the engine as `tabnas = { path = "../../parser/rs" }` (the crate
+takes the engine as `tabnas = { package = "tabnas-parser", path = "../../parser/rs" }` (the crate
 is unpublished, so there is no registry version to fall back on) and
 declares `rust-version = "1.85"`, the fleet MSRV; `ci/rust/run.sh`
 runs through that toolchain when rustup has it. CI clones the parser as
