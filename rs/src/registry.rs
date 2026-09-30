@@ -46,7 +46,7 @@ pub use crate::types::Entry;
 use crate::types::Scope;
 
 /// The generated registry, as committed at `ts/data/registry.json`.
-pub const REGISTRY_JSON: &str = include_str!("../../ts/data/registry.json");
+pub const REGISTRY_JSON: &str = include_str!("../data/registry.json");
 
 /// The registry: the generated file's entries, indexed by language id.
 #[derive(Debug, Clone, Deserialize)]
