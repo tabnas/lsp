@@ -42,7 +42,7 @@ use tabnas::{ParseRecovery, Tabnas, TabnasError, Value};
 use crate::instances::Instances;
 use crate::outline::{outline, DocumentSymbol};
 use crate::semantic::{encode, segments, Segment, SemanticToken};
-use crate::trace::{reconcile, TokenPoint};
+use crate::trace::{reconcile_in, TokenPoint};
 use crate::types::{
     CodeDescription, Diagnostic, Doc, Entry, PositionEncoding, ERROR_REGISTRY, SEVERITY_ERROR,
 };
@@ -90,7 +90,7 @@ pub fn analyze(instances: &Instances, inst: &Tabnas, entry: &Entry, doc: &Doc) -
     let failed = recovery.fatal.is_some();
     let (value, errors) = errors_of(recovery);
     let diagnostics = diagnostics(&errors, Some(entry), doc);
-    let reconciled = reconcile(&collected.lex);
+    let reconciled = reconcile_in(&collected.lex, &doc.text);
     let semantic_tokens = entry
         .is_clean()
         .then(|| semantic_tokens_of_reconciled(&reconciled, entry, doc));
@@ -191,10 +191,12 @@ pub fn diagnostics(errors: &[TabnasError], entry: Option<&Entry>, doc: &Doc) -> 
 }
 
 /// The semantic tokens of one parse's lex events for an entry: the
-/// trace reconciled, mapped through the entry's overrides and encoded
-/// ([`crate::semantic::semantic_tokens`] and [`crate::semantic::encode`]).
+/// trace reconciled against the document's text
+/// ([`crate::trace::reconcile_in`]), mapped through the entry's overrides
+/// and encoded ([`crate::semantic::semantic_tokens`] and
+/// [`crate::semantic::encode`]).
 pub fn semantic_tokens_of(lex: &[TokenPoint], entry: &Entry, doc: &Doc) -> SemanticTokens {
-    semantic_tokens_of_reconciled(&reconcile(lex), entry, doc)
+    semantic_tokens_of_reconciled(&reconcile_in(lex, &doc.text), entry, doc)
 }
 
 /// [`semantic_tokens_of`] for a trace that is already reconciled (an

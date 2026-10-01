@@ -5,10 +5,12 @@ package lsp
 // The cross-runtime conformance suite (design §13): the same fixtures
 // ts/test/conformance.test.js and rs/tests/conformance_test.rs run. TS
 // is canonical — a mismatch here is a defect in this port, never a
-// fixture update.
+// fixture update. The traces section is fed to the pipeline as recorded
+// events rather than parsed.
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"testing"
 )
@@ -45,6 +47,36 @@ type confSuite struct {
 		Tokens    [][]any           `json:"tokens"`
 		Data      []int             `json:"data"`
 	} `json:"semantic"`
+	Traces []struct {
+		Name      string            `json:"name"`
+		Input     string            `json:"input"`
+		Overrides map[string]string `json:"overrides"`
+		Events    []confEvent       `json:"events"`
+		Tokens    [][]any           `json:"tokens"`
+		Data      []int             `json:"data"`
+	} `json:"traces"`
+}
+
+// confEvent is one recorded lex event of the traces section, the row
+// [name, si, ri, ci, len, src]. The length is the source's, which is
+// what this port reads.
+type confEvent tokenPoint
+
+func (e *confEvent) UnmarshalJSON(b []byte) error {
+	var row []json.RawMessage
+	if err := json.Unmarshal(b, &row); err != nil {
+		return err
+	}
+	if 6 != len(row) {
+		return fmt.Errorf("an event row has 6 fields, not %d: %s", len(row), b)
+	}
+	var length int
+	for i, field := range []any{&e.Name, &e.SI, &e.RI, &e.CI, &length, &e.Src} {
+		if err := json.Unmarshal(row[i], field); err != nil {
+			return fmt.Errorf("event field %d of %s: %w", i, b, err)
+		}
+	}
+	return nil
 }
 
 // decodeTokens is the fixture's `tokens` form of a `data` array: the
@@ -146,6 +178,29 @@ func TestConformance(t *testing.T) {
 			}
 			if enc(a.SemanticTokens.Data) != enc(c.Data) {
 				t.Fatalf("data = %s, want %s", enc(a.SemanticTokens.Data), enc(c.Data))
+			}
+			if enc(decodeTokens(c.Data)) != enc(c.Tokens) {
+				t.Fatalf("tokens = %s, want %s", enc(decodeTokens(c.Data)), enc(c.Tokens))
+			}
+		})
+	}
+
+	// A lex trace recorded from a fleet grammar's own lexer, fed to the
+	// pipeline as it is: no parse, and no grammar.
+	if len(suite.Traces) < 2 {
+		t.Fatalf("the traces section has %d cases", len(suite.Traces))
+	}
+	for _, c := range suite.Traces {
+		t.Run("trace: "+c.Name, func(t *testing.T) {
+			events := make([]tokenPoint, 0, len(c.Events))
+			for _, e := range c.Events {
+				events = append(events, tokenPoint(e))
+			}
+			spec := *entry
+			spec.SemanticTokens = c.Overrides
+			got := SemanticTokensOf(events, &spec, doc(c.Input))
+			if enc(got.Data) != enc(c.Data) {
+				t.Fatalf("data = %s, want %s", enc(got.Data), enc(c.Data))
 			}
 			if enc(decodeTokens(c.Data)) != enc(c.Tokens) {
 				t.Fatalf("tokens = %s, want %s", enc(decodeTokens(c.Data)), enc(c.Tokens))

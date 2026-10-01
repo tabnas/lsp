@@ -338,7 +338,7 @@ One debounced parse per change; every artifact from that single pass:
 |---|---|
 | Diagnostics | `errors[]` (recovery) → structured diagnostic → LSP `Diagnostic`; `codeDescription.href` → tabnas.dev error registry; `len` is code points and is converted through the document text (§9) |
 | Completion | `continuations()` — sentinels (`#ZZ`, `#AA`, `#BD`) filtered; fixed-token source as label |
-| Semantic tokens | reconciled lex trace (newest-per-position + span shadowing) → CANON default map + prefix conventions (`KW_*`→keyword, …) + per-entry overrides; fixed superset legend so hot-adds never re-register; served only for `lexStream: clean` entries. The Rust crate also hands a host the byte spans to colour (`highlight`), which is how `aless` uses it |
+| Semantic tokens | reconciled lex trace (newest-per-position + span shadowing, each token first put back on its text when its grammar reported it where the text ends, as `@tabnas/toml` reports its strings) → CANON default map + prefix conventions (`KW_*` and `#KW`→keyword, …) + per-entry overrides; fixed superset legend so hot-adds never re-register; served only for `lexStream: clean` entries. The Rust crate also hands a host the byte spans to colour (`highlight`), which is how `aless` uses it |
 | Outline | `ruleDone` events (incl. `forced` closes) → rule-name filter → span-nested `DocumentSymbol`s |
 | Hover | token under cursor + descriptions (tracked; degrade to nothing) |
 | Cross-file | multisource `documentLink` (workspace-sandboxed, off by default; tracked) |
@@ -442,9 +442,10 @@ sharing**:
   lane both servers depend on.
 - `test/fixtures/lsp-conformance.json` — document → expected
   diagnostic codes and first ranges, outline names and whole symbol
-  trees, completion labels and semantic tokens, every section executed
-  by `ts/test/conformance.test.js`, `go/conformance_test.go` and
-  `rs/tests/conformance_test.rs`.
+  trees, completion labels and semantic tokens, and a lex trace
+  recorded from a fleet grammar → semantic tokens, every section
+  executed by `ts/test/conformance.test.js`, `go/conformance_test.go`
+  and `rs/tests/conformance_test.rs`.
 - `rs/tests/parity_sweep.rs` — seeded random documents through the TS
   core (node) and the Rust crate, run by hand. It also compares the two
   ENGINES' raw event streams, so a mismatch is classified as the port's

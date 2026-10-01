@@ -20,7 +20,7 @@
 use tabnas::{ParseRecovery, Tabnas, TabnasError};
 
 use crate::semantic::{segments, Overrides, Segment, SemanticToken, TokenType};
-use crate::trace::{reconcile, LexTrace, TokenPoint};
+use crate::trace::{reconcile_in, LexTrace, TokenPoint};
 
 /// A byte range of the highlighted text and its token type. Spans never
 /// cross a line: a token spanning lines yields one span per line, the
@@ -152,7 +152,7 @@ fn build(
             .iter()
             .any(|event| event.si.saturating_add(event.len) >= text.len());
     let partial = recovery.fatal.is_some() || !reached_end;
-    let reconciled = reconcile(&events);
+    let reconciled = reconcile_in(&events, text);
     let segments = segments(&reconciled, overrides, text);
     let spans = segments
         .iter()
@@ -169,5 +169,60 @@ fn build(
         reconciled,
         errors: recovery.errors,
         partial,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(name: &str, si: usize, ri: usize, ci: usize, src: &str) -> TokenPoint {
+        TokenPoint {
+            name: name.into(),
+            si,
+            ri,
+            ci,
+            len: src.len(),
+            src: src.into(),
+        }
+    }
+
+    #[test]
+    fn a_token_reported_at_the_end_of_its_text_is_highlighted_on_it() {
+        // The trace TOML's string matcher gives for `a = 'x'`: the string
+        // is reported where it ends, where the line feed lexed after it
+        // starts, and was shadowed by it.
+        let text = "a = 'x'\n";
+        let events = vec![
+            at("#ID", 0, 1, 1, "a"),
+            at("#SP", 1, 1, 2, " "),
+            at("#CL", 2, 1, 3, "="),
+            at("#SP", 3, 1, 4, " "),
+            at("#ST", 7, 1, 8, "'x'"),
+            at("#LN", 7, 1, 8, "\n"),
+            at("#ZZ", 8, 2, 1, ""),
+        ];
+        let recovery = ParseRecovery {
+            value: None,
+            errors: Vec::new(),
+            fatal: None,
+        };
+        let result = build(events, recovery, None, text);
+        let spans: Vec<(&str, TokenType)> = result
+            .spans
+            .iter()
+            .map(|span| (&text[span.start..span.end], span.kind))
+            .collect();
+        assert_eq!(
+            spans,
+            [
+                ("a", TokenType::Variable),
+                ("=", TokenType::Operator),
+                ("'x'", TokenType::String),
+            ]
+        );
+        assert!(!result.partial);
+        let string = result.reconciled.iter().find(|t| t.name == "#ST");
+        assert_eq!(string.map(|t| (t.si, t.ci)), Some((4, 5)));
     }
 }

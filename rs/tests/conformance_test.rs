@@ -8,9 +8,11 @@
 // case: `run_analyze` (diagnostic codes in order, the first diagnostic's
 // range, the outline's name tree), `run_completions` (sorted item
 // labels at a position), `run_outlines` (the whole symbol tree, ranges
-// included) and `run_semantic` (error count, decoded tokens,
-// delta-encoded data). A new fixture section gets a runner of its own
-// here, and in the other two runtimes' runners in the same change.
+// included), `run_semantic` (error count, decoded tokens,
+// delta-encoded data) and `run_traces` (decoded tokens and data of a
+// recorded lex trace, fed to the pipeline with no parse). A new fixture
+// section gets a runner of its own here, and in the other two runtimes'
+// runners in the same change.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,9 +20,10 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 use tabnas::{Options, Tabnas};
+use tabnas_lsp::analyze::semantic_tokens_of;
 use tabnas_lsp::{
     analyze, completion, encode, highlight, semantic_tokens, Doc, DocumentSymbol, Entry,
-    Highlighter, Instances, LexTrace, MakeInstance, Overrides, Position, Range,
+    Highlighter, Instances, LexTrace, MakeInstance, Overrides, Position, Range, TokenPoint,
 };
 
 fn fixtures() -> PathBuf {
@@ -42,6 +45,7 @@ struct Suite {
     completions: Vec<CompletionCase>,
     outlines: Vec<OutlinesCase>,
     semantic: Vec<SemanticCase>,
+    traces: Vec<TraceCase>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +89,35 @@ struct SemanticCase {
     errors: usize,
     tokens: Vec<(usize, usize, usize, String)>,
     data: Vec<u32>,
+}
+
+/// A recorded lex trace: `events` are `[name, si, ri, ci, len, src]`
+/// rows, recorded from the grammar `recorded` names.
+#[derive(Debug, Deserialize)]
+struct TraceCase {
+    name: String,
+    input: String,
+    #[serde(default)]
+    overrides: Option<Overrides>,
+    events: Vec<(String, usize, usize, usize, usize, String)>,
+    tokens: Vec<(usize, usize, usize, String)>,
+    data: Vec<u32>,
+}
+
+impl TraceCase {
+    fn events(&self) -> Vec<TokenPoint> {
+        self.events
+            .iter()
+            .map(|(name, si, ri, ci, len, src)| TokenPoint {
+                name: name.clone(),
+                si: *si,
+                ri: *ri,
+                ci: *ci,
+                len: *len,
+                src: src.clone(),
+            })
+            .collect()
+    }
 }
 
 fn suite() -> Suite {
@@ -288,6 +321,50 @@ fn the_semantic_section_matches_through_analyze() {
             .semantic_tokens
             .as_ref()
             .unwrap_or_else(|| panic!("{}: no semantic tokens for a clean entry", case.name));
+        assert_eq!(tokens.data, case.data, "{}: data", case.name);
+        let rows: Vec<(usize, usize, usize, String)> = tokens
+            .tokens
+            .iter()
+            .map(|t| (t.row, t.col, t.len, t.kind.name().to_string()))
+            .collect();
+        assert_eq!(rows, case.tokens, "{}: tokens", case.name);
+    }
+}
+
+// ---------------------------------------------------------------------
+// traces
+
+fn run_traces(suite: &Suite) {
+    assert!(
+        suite.traces.len() >= 2,
+        "the traces section has {} cases",
+        suite.traces.len()
+    );
+    for case in &suite.traces {
+        let tokens = semantic_tokens(&case.events(), case.overrides.as_ref(), &case.input);
+        let rows: Vec<(usize, usize, usize, String)> = tokens
+            .iter()
+            .map(|t| (t.row, t.col, t.len, t.kind.name().to_string()))
+            .collect();
+        assert_eq!(rows, case.tokens, "{}: tokens", case.name);
+        assert_eq!(encode(&tokens), case.data, "{}: data", case.name);
+    }
+}
+
+#[test]
+fn the_traces_section_matches_the_canonical_pipeline() {
+    run_traces(&suite());
+}
+
+/// The same section through `analyze`'s own step from events to tokens,
+/// with the case's overrides on the entry.
+#[test]
+fn the_traces_section_matches_through_semantic_tokens_of() {
+    let suite = suite();
+    for case in &suite.traces {
+        let mut entry = entry();
+        entry.semantic_tokens = case.overrides.clone();
+        let tokens = semantic_tokens_of(&case.events(), &entry, &doc(&case.input));
         assert_eq!(tokens.data, case.data, "{}: data", case.name);
         let rows: Vec<(usize, usize, usize, String)> = tokens
             .tokens

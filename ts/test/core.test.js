@@ -219,6 +219,78 @@ describe('lsp-core', () => {
     assert.equal(a.semanticTokens, null)
   })
 
+  it('the keyword convention takes the whole name #KW', () => {
+    // alchemy's lexer names its `:name` keywords #KW: no CANON name, and
+    // not the KW_ prefix, so they went uncoloured.
+    assert.equal(core.tokenType('#KW'), 'keyword')
+    assert.equal(core.tokenType('KW_if'), 'keyword')
+    assert.equal(core.tokenType('#KWX'), null)
+    assert.equal(core.tokenType('#KW_'), null)
+    // An entry's override still wins.
+    assert.equal(core.tokenType('#KW', { '#KW': 'property' }), 'property')
+  })
+
+  it('a token reported at the end of its text is put back on it', () => {
+    // @tabnas/toml builds each string token from the cursor after the
+    // string, so the token that starts there shadowed it and no string
+    // was coloured. TypeScript units: UTF-16, so the emoji counts two.
+    const text = 'k = "é😀"\n'
+    const events = [
+      { name: '#ID', sI: 0, rI: 1, cI: 1, len: 1, src: 'k' },
+      { name: '#SP', sI: 1, rI: 1, cI: 2, len: 1, src: ' ' },
+      { name: '#CL', sI: 2, rI: 1, cI: 3, len: 1, src: '=' },
+      { name: '#SP', sI: 3, rI: 1, cI: 4, len: 1, src: ' ' },
+      { name: '#ST', sI: 9, rI: 1, cI: 10, len: 5, src: '"é😀"' },
+      { name: '#LN', sI: 9, rI: 1, cI: 10, len: 1, src: '\n' },
+      { name: '#ZZ', sI: 10, rI: 2, cI: 1, len: 0, src: '' },
+    ]
+    const kept = core.reconcile(events, text)
+    const st = kept.find((t) => '#ST' === t.name)
+    assert.ok(st, 'the string survives reconciliation')
+    assert.deepStrictEqual([st.sI, st.rI, st.cI, st.len], [4, 1, 5, 5])
+    const doc = new Doc('file:///t.toml', 'toml', 1, text)
+    const { data } = core.semanticTokens(events, { semanticTokens: {} }, doc)
+    assert.deepStrictEqual(data, [
+      0, 0, 1, 5, 0, // k
+      0, 2, 1, 4, 0, // =
+      0, 2, 5, 0, 0, // the string, five UTF-16 units at character 4
+    ])
+  })
+
+  it('a token spanning lines is put back where it starts', () => {
+    // The row moves back by the line feeds the token spans; the column
+    // is measured from the text, since the end column is the last line's.
+    const text = 'x = 1\nc = """\nz"""\n'
+    const events = [
+      { name: '#ID', sI: 6, rI: 2, cI: 1, len: 1, src: 'c' },
+      { name: '#CL', sI: 8, rI: 2, cI: 3, len: 1, src: '=' },
+      { name: '#ST', sI: 18, rI: 3, cI: 5, len: 8, src: '"""\nz"""' },
+      { name: '#LN', sI: 18, rI: 3, cI: 5, len: 1, src: '\n' },
+    ]
+    const st = core.reconcile(events, text).find((t) => '#ST' === t.name)
+    assert.deepStrictEqual([st.sI, st.rI, st.cI], [10, 2, 5])
+    const doc = new Doc('file:///t.toml', 'toml', 1, text)
+    const { data } = core.semanticTokens(events, { semanticTokens: {} }, doc)
+    assert.deepStrictEqual(data, [
+      1, 0, 1, 5, 0, // c
+      0, 2, 1, 4, 0, // =
+      0, 2, 3, 0, 0, // """
+      1, 0, 4, 0, 0, // z"""
+    ])
+  })
+
+  it('a token whose text is where it says, or nowhere near, is left alone', () => {
+    const text = 'ab "s" cd'
+    const at = { name: '#ST', sI: 3, rI: 1, cI: 4, len: 3, src: '"s"' }
+    const elsewhere = { name: '#ST', sI: 7, rI: 1, cI: 8, len: 3, src: '"t"' }
+    const empty = { name: '#ZZ', sI: 9, rI: 1, cI: 10, len: 0, src: '' }
+    const kept = core.reconcile([at, elsewhere, empty], text)
+    assert.deepStrictEqual(kept, [at, elsewhere, empty])
+    // Without a text there is nothing to measure against.
+    const end = { name: '#ST', sI: 6, rI: 1, cI: 7, len: 3, src: '"s"' }
+    assert.deepStrictEqual(core.reconcile([end]), [end])
+  })
+
   it('completion drops engine sentinels', () => {
     // The engine names #ZZ (end-of-source) as a legal continuation for
     // every prefix that parses — its way of saying the document is

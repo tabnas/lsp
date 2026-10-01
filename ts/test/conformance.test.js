@@ -96,4 +96,19 @@ describe('lsp-conformance', () => {
       assert.deepStrictEqual(decodeTokens(c.data), c.tokens)
     })
   }
+
+  // A lex trace recorded from a fleet grammar's own lexer, fed to the
+  // pipeline as it is: the reconciliation and the mapping over that
+  // grammar's tokens, with no parse and no grammar.
+  for (const c of SUITE.traces) {
+    it('trace: ' + c.name, () => {
+      const events = c.events.map(([name, sI, rI, cI, len, src]) =>
+        ({ name, sI, rI, cI, len, src }))
+      const entry = Object.assign({}, ENTRY, { semanticTokens: c.overrides || {} })
+      const doc = new Doc('file:///t', 'trace', 1, c.input)
+      const { data } = core.semanticTokens(events, entry, doc)
+      assert.deepStrictEqual(data, c.data)
+      assert.deepStrictEqual(decodeTokens(c.data), c.tokens)
+    })
+  }
 })

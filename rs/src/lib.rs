@@ -19,7 +19,7 @@
 //! | [`types`] | the shared definitions of `ts/src/*.js` | positions and encodings, [`Doc`], [`Diagnostic`], [`Entry`], the collector types, [`MakeInstance`], [`Config`], [`LoadError`] |
 //! | [`documents`] | `ts/src/documents.js`, `go/documents.go` | the line index and every position conversion (UTF-16 or UTF-8 wire units from the engine's rows, columns and byte offsets); the store of open documents |
 //! | [`instances`] | `ts/src/instances.js`, `go/core.go` | one instance per entry, the one permanent mux subscriber pair, serialized parses, quarantine after three failures, invalidation on reload |
-//! | [`trace`] | `ts/src/core.js` `reconcile` | the lex-trace collector and the documented reconciliation contract |
+//! | [`trace`] | `ts/src/core.js` `reconcile`, `anchor` | the lex-trace collector and the documented reconciliation contract, run against the source text ([`reconcile_in`]) |
 //! | [`semantic`] | `ts/src/core.js` `tokenType`, `semanticTokens` | the CANON map, prefix conventions, the fixed legend, LSP tokens and their delta encoding |
 //! | [`mod@analyze`] | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens, outline, hover data |
 //! | [`mod@outline`] | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s |
@@ -68,7 +68,7 @@ pub use semantic::{
     DEFAULT_TOKEN_TYPES, LEGEND, PREFIX_TYPES,
 };
 pub use server::{serve, Server};
-pub use trace::{reconcile, LexTrace, TokenPoint};
+pub use trace::{anchor, reconcile, reconcile_in, LexTrace, TokenPoint};
 pub use types::{
     CodeDescription, Collected, Config, Diagnostic, Doc, Entry, EntrySource, Issue, Load,
     LoadError, MakeInstance, Position, PositionEncoding, Range, RuleEvent, RuleEventState, Scope,

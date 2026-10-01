@@ -275,3 +275,96 @@ func TestMultilineTokensSplitPerLine(t *testing.T) {
 		t.Fatal("no continuation span on the second line")
 	}
 }
+
+func TestKeywordConventionTakesTheWholeNameHashKW(t *testing.T) {
+	// alchemy's lexer names its `:name` keywords #KW: no CANON name, and
+	// not the KW_ prefix, so they went uncoloured.
+	for name, want := range map[string]string{
+		"#KW": "keyword", "KW_if": "keyword", "#KWX": "", "#KW_": "",
+	} {
+		if got := TokenType(name, nil); got != want {
+			t.Errorf("TokenType(%q) = %q, want %q", name, got, want)
+		}
+	}
+	if got := TokenType("#KW", map[string]string{"#KW": "property"}); "property" != got {
+		t.Errorf("an entry's override must still win: got %q", got)
+	}
+}
+
+// anchored returns the reconciled token named name, failing when the
+// reconciliation dropped it.
+func anchored(t *testing.T, events []tokenPoint, text, name string) tokenPoint {
+	t.Helper()
+	for _, k := range reconcile(events, text) {
+		if name == k.Name {
+			return k
+		}
+	}
+	t.Fatalf("%s did not survive reconciliation", name)
+	return tokenPoint{}
+}
+
+func TestATokenReportedAtTheEndOfItsTextIsPutBackOnIt(t *testing.T) {
+	// @tabnas/toml builds each string token from the cursor after the
+	// string, so the token that starts there shadowed it and no string
+	// was coloured. Go units: SI in bytes, CI in runes.
+	text := "k = \"é😀\"\n"
+	events := []tokenPoint{
+		{Name: "#ID", SI: 0, RI: 1, CI: 1, Src: "k"},
+		{Name: "#SP", SI: 1, RI: 1, CI: 2, Src: " "},
+		{Name: "#CL", SI: 2, RI: 1, CI: 3, Src: "="},
+		{Name: "#SP", SI: 3, RI: 1, CI: 4, Src: " "},
+		{Name: "#ST", SI: 12, RI: 1, CI: 9, Src: "\"é😀\""},
+		{Name: "#LN", SI: 12, RI: 1, CI: 9, Src: "\n"},
+		{Name: "#ZZ", SI: 13, RI: 2, CI: 1, Src: ""},
+	}
+	st := anchored(t, events, text, "#ST")
+	if 4 != st.SI || 1 != st.RI || 5 != st.CI {
+		t.Fatalf("string at SI %d RI %d CI %d, want 4 1 5", st.SI, st.RI, st.CI)
+	}
+	got := SemanticTokensOf(events, nil, doc(text)).Data
+	// k, =, then the string: five UTF-16 units at character 4.
+	want := []int{0, 0, 1, 5, 0, 0, 2, 1, 4, 0, 0, 2, 5, 0, 0}
+	if enc(got) != enc(want) {
+		t.Fatalf("data = %v, want %v", got, want)
+	}
+}
+
+func TestATokenSpanningLinesIsPutBackWhereItStarts(t *testing.T) {
+	// The row moves back by the line feeds the token spans; the column
+	// is measured from the text before it, from the lone CR that
+	// restarted it.
+	text := "x\rc = '''\nz'''\n"
+	events := []tokenPoint{
+		{Name: "#ID", SI: 0, RI: 1, CI: 1, Src: "x"},
+		{Name: "#LN", SI: 1, RI: 1, CI: 2, Src: "\r"},
+		{Name: "#ID", SI: 2, RI: 1, CI: 1, Src: "c"},
+		{Name: "#CL", SI: 4, RI: 1, CI: 3, Src: "="},
+		{Name: "#ST", SI: 14, RI: 2, CI: 5, Src: "'''\nz'''"},
+		{Name: "#LN", SI: 14, RI: 2, CI: 5, Src: "\n"},
+	}
+	st := anchored(t, events, text, "#ST")
+	if 6 != st.SI || 1 != st.RI || 5 != st.CI {
+		t.Fatalf("string at SI %d RI %d CI %d, want 6 1 5", st.SI, st.RI, st.CI)
+	}
+	got := SemanticTokensOf(events, nil, doc(text)).Data
+	// x, c (column 0 after the lone CR), =, ''' and z''' on the next row.
+	want := []int{0, 0, 1, 5, 0, 0, 0, 1, 5, 0, 0, 2, 1, 4, 0, 0, 2, 3, 0, 0, 1, 0, 4, 0, 0}
+	if enc(got) != enc(want) {
+		t.Fatalf("data = %v, want %v", got, want)
+	}
+}
+
+func TestATokenWhoseTextIsWhereItSaysOrNowhereNearIsLeftAlone(t *testing.T) {
+	text := "ab \"s\" cd"
+	for _, k := range []tokenPoint{
+		{Name: "#ST", SI: 3, RI: 1, CI: 4, Src: "\"s\""},
+		{Name: "#ST", SI: 7, RI: 1, CI: 8, Src: "\"t\""},
+		{Name: "#ZZ", SI: 9, RI: 1, CI: 10, Src: ""},
+		{Name: "#ST", SI: 99, RI: 1, CI: 100, Src: "\"s\""},
+	} {
+		if got := anchor(k, text); got != k {
+			t.Errorf("anchor(%+v) = %+v, want it unchanged", k, got)
+		}
+	}
+}

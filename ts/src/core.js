@@ -31,8 +31,11 @@ const DEFAULT_TOKEN_TYPES = {
   '#CA': 'operator',
 }
 
+// The keyword convention also takes the whole name #KW, as the
+// identifier one takes ID and #ID: alchemy's lexer gives its `:name`
+// keywords that name.
 const PREFIX_TYPES = [
-  [/^KW_/, 'keyword'],
+  [/^KW_|^#KW$/, 'keyword'],
   [/^LIT_/, 'string'],
   [/^TRIVIA_/, 'comment'],
   [/^PP_/, 'macro'],
@@ -137,13 +140,43 @@ function diagnostics(errors, entry, doc) {
   return out
 }
 
+// Put a token where its source text is. The lex-trace contract places a
+// token at [sI, sI + len), and reconcile() shadows by that span. A
+// grammar's matcher can build its token from the cursor AFTER its text
+// instead (@tabnas/toml's string matcher does, deliberately, in every
+// runtime), and the token that starts there, lexed later, then shadows
+// it: no TOML string was ever coloured. A token whose source text ends
+// at sI rather than starting there is moved back onto that text, its row
+// by the line feeds it spans and its column by its length, or, when it
+// spans lines, from the text before it. Every other token is returned as
+// it is, so a grammar that keeps the contract sees no change.
+function anchor(t, text) {
+  const len = t.len | 0
+  const src = t.src
+  if (len < 1 || 'string' !== typeof src || src.length !== len) return t
+  if (text.startsWith(src, t.sI)) return t
+  const sI = t.sI - len
+  if (sI < 0 || !text.startsWith(src, sI)) return t
+  let cI = t.cI - len
+  if (/[\r\n]/.test(src) || cI < 1) {
+    // The engine restarts the column at a line feed and at a lone CR.
+    const brk =
+      0 < sI ? Math.max(text.lastIndexOf('\n', sI - 1), text.lastIndexOf('\r', sI - 1)) : -1
+    cI = sI - brk
+  }
+  const rI = t.rI - (src.split('\n').length - 1)
+  return { name: t.name, tin: t.tin, sI, rI, cI, len, src }
+}
+
 // Reconstruct final tokens per the documented lex-trace contract:
-// newest event per position wins, spans shadow interior positions.
-function reconcile(lexEvents) {
+// newest event per position wins, spans shadow interior positions. With
+// the source `text`, each token is first put where its text is
+// (anchor()).
+function reconcile(lexEvents, text) {
   const out = []
   const claimed = []
   for (let i = lexEvents.length - 1; 0 <= i; i--) {
-    const t = lexEvents[i]
+    const t = null == text ? lexEvents[i] : anchor(lexEvents[i], text)
     const len = Math.max(1, t.len | 0)
     let shadowed = false
     for (const [s, e] of claimed) {
@@ -171,7 +204,7 @@ function semanticTokens(lexEvents, entry, doc) {
     prevLine = line
     prevChar = char
   }
-  for (const t of reconcile(lexEvents)) {
+  for (const t of reconcile(lexEvents, doc ? doc.text : null)) {
     const name = t.name || (inst && String(inst.token(t.tin))) || ''
     const type = tokenType(name, overrides)
     if (null == type) continue
