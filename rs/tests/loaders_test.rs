@@ -1123,6 +1123,88 @@ fn a_fleet_instance_parses_what_its_crate_parses() {
     }
 }
 
+#[cfg(feature = "fleet")]
+#[test]
+fn the_fleet_toml_grammar_is_coloured_in_every_string_form() {
+    // tabnas-toml reports each string token where the string ENDS, so
+    // the token lexed next shadowed it and no TOML string was coloured,
+    // in aless's view or in an editor. Every form now is, where it is: a
+    // value, an array item, an inline table's value, a header's quoted
+    // part, and a quoted key too, since the token cannot tell a key from
+    // a value. A bare key stays a variable.
+    use tabnas_lsp::loaders::fleet;
+    use tabnas_lsp::{analyze, highlight, Doc, Instances, Registry, TokenType};
+
+    let text = concat!(
+        "basic = \"b \\\"q\\\"\"\n",
+        "literal = 'C:\\path'\n",
+        "multi = \"\"\"\nline\"\"\"\n",
+        "raw = '''\nline'''\n",
+        "arr = [\"a\", 'b']\n",
+        "inline = { k = \"v\" }\n",
+        "\"quoted\" = 1\n",
+        "'lit' = 2\n",
+        "[t.\"h\"]\n",
+        "x = \"y\"\n",
+    );
+    let strings = [
+        "\"b \\\"q\\\"\"",
+        "'C:\\path'",
+        "\"\"\"",
+        "line\"\"\"",
+        "'''",
+        "line'''",
+        "\"a\"",
+        "'b'",
+        "\"v\"",
+        "\"quoted\"",
+        "'lit'",
+        "\"h\"",
+        "\"y\"",
+    ];
+    let entry = Registry::bundled().entry("toml").expect("toml is bundled");
+    let loader = fleet();
+
+    let result = highlight(
+        loader.make_instance(entry).unwrap(),
+        text,
+        entry.overrides(),
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert!(!result.partial);
+    let coloured = |kind: TokenType| -> Vec<&str> {
+        result
+            .spans
+            .iter()
+            .filter(|span| span.kind == kind)
+            .map(|span| &text[span.start..span.end])
+            .collect()
+    };
+    assert_eq!(coloured(TokenType::String), strings);
+    assert_eq!(
+        coloured(TokenType::Variable),
+        ["basic", "literal", "multi", "raw", "arr", "inline", "k", "t", "x"]
+    );
+
+    // The server's path agrees, row and column, in UTF-16 units.
+    let mut instances = Instances::new(loader.into_make_instance());
+    let inst = instances
+        .get(entry, None)
+        .unwrap()
+        .expect("not quarantined");
+    let doc = Doc::new("file:///t.toml", "toml", 1, text);
+    let analysis = analyze(&instances, &inst, entry, &doc);
+    let tokens = analysis
+        .semantic_tokens
+        .expect("toml's lex stream is clean");
+    assert_eq!(tokens.tokens, result.tokens);
+    let first = &tokens.tokens[2];
+    assert_eq!(
+        (first.row, first.col, first.len, first.kind),
+        (0, 8, 9, TokenType::String)
+    );
+}
+
 #[test]
 fn compile_grammar_text_refuses_an_unknown_dialect_before_anything_else() {
     let error = compile_grammar_text(Path::new("g.txt"), "").unwrap_err();

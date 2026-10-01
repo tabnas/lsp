@@ -14,6 +14,15 @@
 //! [`reconcile`] is that contract; `ts/src/core.js` `reconcile` and
 //! `go/semantic.go` `reconcile` are the same function.
 //!
+//! The contract places a token at `[si, si + len)`, which assumes `si` is
+//! where the token's text starts. A grammar's matcher can build its token
+//! from the cursor AFTER the text instead: `@tabnas/toml`'s string matcher
+//! does, deliberately, in every runtime, and the token that starts there,
+//! lexed later, then shadows the string. So the pipeline reconciles
+//! against the source with [`reconcile_in`], which first puts each such
+//! token back on its text ([`anchor`]); the canonical `reconcile` does the
+//! same when it is given the text.
+//!
 //! Positions are the Rust engine's: `si` is a UTF-8 BYTE offset into the
 //! source and `len` a byte length, where the TypeScript engine counts
 //! UTF-16 units and Go counts bytes too. The contract is identical; only
@@ -162,25 +171,85 @@ impl LexTrace {
 /// there; it took seconds at 80k tokens and would take tens of minutes
 /// on a large minified document.
 pub fn reconcile(events: &[TokenPoint]) -> Vec<TokenPoint> {
+    reconcile_placed(events, |_| None)
+}
+
+/// [`reconcile`] a trace of a parse of `text`, each token first put where
+/// its text is ([`anchor`]). This is what the pipeline runs: `analyze`,
+/// the semantic tokens and `highlight` all reconcile this way. It differs
+/// from [`reconcile`] only for a token that a grammar reported at the end
+/// of its text.
+pub fn reconcile_in(events: &[TokenPoint], text: &str) -> Vec<TokenPoint> {
+    reconcile_placed(events, |event| anchor(event, text))
+}
+
+/// The reconciliation, with each event first passed to `place`, which
+/// answers the event moved, or `None` to keep it where it was reported.
+fn reconcile_placed(
+    events: &[TokenPoint],
+    place: impl Fn(&TokenPoint) -> Option<TokenPoint>,
+) -> Vec<TokenPoint> {
     let mut claimed: BTreeMap<usize, usize> = BTreeMap::new();
     let mut out: Vec<TokenPoint> = Vec::new();
     for event in events.iter().rev() {
+        let moved = place(event);
+        let at = moved.as_ref().unwrap_or(event);
         let shadowed = claimed
-            .range(..=event.si)
+            .range(..=at.si)
             .next_back()
-            .is_some_and(|(_, &end)| event.si < end);
+            .is_some_and(|(_, &end)| at.si < end);
         if shadowed {
             continue;
         }
-        claim(
-            &mut claimed,
-            event.si,
-            event.si.saturating_add(event.span()),
-        );
-        out.push(event.clone());
+        claim(&mut claimed, at.si, at.si.saturating_add(at.span()));
+        out.push(moved.unwrap_or_else(|| event.clone()));
     }
     out.sort_by_key(|event| event.si);
     out
+}
+
+/// The token moved back onto its source text, when `text`, the source
+/// that was parsed, holds that text just BEFORE the reported offset and
+/// not at it; `None` for every other token, which stays as reported.
+///
+/// A grammar's matcher can build its token from the cursor after its text
+/// rather than before it. `@tabnas/toml`'s string matcher does, in every
+/// runtime, and keeps it as canonical for the columns its diagnostics
+/// report; the token then claims the span after the string, where the
+/// token lexed next (the line end, the space, the comma) starts and,
+/// being newer, shadows it, so no TOML string reached the mapping. The
+/// moved token's row goes back by the line feeds its text spans, and its
+/// column by its length in scalar values, or, when its text spans lines
+/// (or the column cannot have come after it), is measured from the text
+/// before it, back to the line feed or lone CR where the engine restarts
+/// its count. `ts/src/core.js` `anchor` and `go/semantic.go` `anchor`
+/// are the same rule.
+pub fn anchor(event: &TokenPoint, text: &str) -> Option<TokenPoint> {
+    let src = event.src.as_str();
+    let n = src.len();
+    if n == 0 || event.len != n {
+        return None;
+    }
+    if text.get(event.si..event.si.checked_add(n)?) == Some(src) {
+        return None;
+    }
+    let start = event.si.checked_sub(n)?;
+    if text.get(start..event.si) != Some(src) {
+        return None;
+    }
+    let chars = src.chars().count();
+    let ci = if src.contains(['\n', '\r']) || event.ci <= chars {
+        let from = text[..start].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+        text[from..start].chars().count() + 1
+    } else {
+        event.ci - chars
+    };
+    Some(TokenPoint {
+        si: start,
+        ri: event.ri.saturating_sub(src.matches('\n').count()),
+        ci,
+        ..event.clone()
+    })
 }
 
 /// Add `[start, end)` to the union of claimed spans, absorbing every
@@ -326,6 +395,89 @@ mod tests {
         let events = vec![point("#B", 2, "b"), point("#A", 0, "a")];
         let sis: Vec<usize> = reconcile(&events).iter().map(|t| t.si).collect();
         assert_eq!(sis, [0, 2]);
+    }
+
+    fn at(name: &str, si: usize, ri: usize, ci: usize, src: &str) -> TokenPoint {
+        TokenPoint {
+            name: name.into(),
+            si,
+            ri,
+            ci,
+            len: src.len(),
+            src: src.into(),
+        }
+    }
+
+    #[test]
+    fn a_token_reported_at_the_end_of_its_text_is_put_back_on_it() {
+        // TOML's string matcher builds each string token from the cursor
+        // after the string. The contract alone then lets the line feed
+        // lexed next, starting there, shadow it; against the text it is
+        // moved back onto its own bytes, the column by its length in
+        // scalar values.
+        let text = "k = \"\u{e9}\u{1F600}\"\n";
+        let string = at("#ST", 12, 1, 9, "\"\u{e9}\u{1F600}\"");
+        let events = vec![
+            at("#ID", 0, 1, 1, "k"),
+            at("#SP", 1, 1, 2, " "),
+            at("#CL", 2, 1, 3, "="),
+            at("#SP", 3, 1, 4, " "),
+            string.clone(),
+            at("#LN", 12, 1, 9, "\n"),
+            at("#ZZ", 13, 2, 1, ""),
+        ];
+        assert!(reconcile(&events).iter().all(|t| t.name != "#ST"));
+        let moved = anchor(&string, text).expect("the string is moved");
+        assert_eq!((moved.si, moved.ri, moved.ci), (4, 1, 5));
+        assert_eq!((moved.name.as_str(), moved.len), ("#ST", 8));
+        assert_eq!(moved.src, string.src);
+        let kept = reconcile_in(&events, text);
+        let names: Vec<&str> = kept.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["#ID", "#SP", "#CL", "#SP", "#ST", "#LN", "#ZZ"]);
+        assert_eq!(kept[4], moved);
+    }
+
+    #[test]
+    fn a_token_spanning_lines_is_put_back_where_it_starts() {
+        // The row goes back by the line feeds the text spans (the CR of a
+        // CRLF is not one), and the column is measured from the text: back
+        // to the lone CR that restarted the engine's count, past the
+        // two-byte character before it.
+        let text = "\u{e9}\rc = '''\r\nz'''\n";
+        let string = at("#ST", 16, 2, 5, "'''\r\nz'''");
+        let moved = anchor(&string, text).expect("the string is moved");
+        assert_eq!((moved.si, moved.ri, moved.ci), (7, 1, 5));
+        // A column that cannot have come after the text is measured too.
+        let early = at("#ST", 7, 1, 2, "'''");
+        assert_eq!(
+            anchor(&early, "c = '''\n").map(|t| (t.si, t.ci)),
+            Some((4, 5))
+        );
+    }
+
+    #[test]
+    fn a_token_whose_text_is_where_it_says_or_nowhere_near_is_left_alone() {
+        let text = "ab \"s\" cd";
+        for event in [
+            // Where it says: the contract.
+            at("#ST", 3, 1, 4, "\"s\""),
+            // Neither at its offset nor before it.
+            at("#ST", 7, 1, 8, "\"t\""),
+            // Nothing to place.
+            at("#ZZ", 9, 1, 10, ""),
+            // A length that is not its source's.
+            TokenPoint {
+                len: 1,
+                ..at("#ST", 6, 1, 7, "\"s\"")
+            },
+            // Past the text, and before its start.
+            at("#ST", 99, 1, 100, "\"s\""),
+            at("#ST", 1, 1, 2, "ab \"s\""),
+            at("#ST", usize::MAX, 1, 1, "x"),
+        ] {
+            assert_eq!(anchor(&event, text), None, "{event:?}");
+            assert_eq!(reconcile_in(&[event.clone()], text), vec![event]);
+        }
     }
 
     #[test]

@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::trace::{reconcile, TokenPoint};
+use crate::trace::{reconcile_in, TokenPoint};
 
 /// An LSP semantic token type, one of the nine in [`LEGEND`].
 ///
@@ -108,7 +108,9 @@ pub const DEFAULT_TOKEN_TYPES: [(&str, TokenType); 11] = [
 /// The prefix conventions for grammars with their own token schemes
 /// (design §5), tried in order after the defaults. `ID` and `#ID`, the
 /// identifier convention, map to `variable` and are matched whole rather
-/// than by prefix; see [`prefix_token_type`].
+/// than by prefix, and so is `#KW`, which the keyword convention takes as
+/// well: it is the name alchemy's lexer gives its `:name` keywords. See
+/// [`prefix_token_type`].
 pub const PREFIX_TYPES: [(&str, TokenType); 5] = [
     ("KW_", TokenType::Keyword),
     ("LIT_", TokenType::String),
@@ -136,6 +138,9 @@ pub fn prefix_token_type(name: &str) -> Option<TokenType> {
         .find(|(prefix, _)| name.starts_with(prefix))
     {
         return Some(kind);
+    }
+    if name == "#KW" {
+        return Some(TokenType::Keyword);
     }
     if name == "ID" || name == "#ID" {
         return Some(TokenType::Variable);
@@ -414,16 +419,16 @@ pub(crate) fn segments(
 }
 
 /// The semantic tokens of a document from its raw lex trace: the events
-/// are [`reconcile`]d, mapped through [`token_type`] with the entry's
-/// `overrides`, and positioned against `text`, the source that was
-/// parsed. Tokens the pipeline does not colour are absent; a token
-/// spanning lines is split per line.
+/// are reconciled against `text`, the source that was parsed
+/// ([`reconcile_in`]), mapped through [`token_type`] with the entry's
+/// `overrides`, and positioned against the same text. Tokens the pipeline
+/// does not colour are absent; a token spanning lines is split per line.
 pub fn semantic_tokens(
     events: &[TokenPoint],
     overrides: Option<&Overrides>,
     text: &str,
 ) -> Vec<SemanticToken> {
-    semantic_tokens_reconciled(&reconcile(events), overrides, text)
+    semantic_tokens_reconciled(&reconcile_in(events, text), overrides, text)
 }
 
 /// [`semantic_tokens`] for a trace that is already reconciled.
@@ -595,6 +600,57 @@ mod tests {
     }
 
     #[test]
+    fn the_keyword_convention_takes_the_whole_name_hash_kw() {
+        // alchemy's lexer names its `:name` keywords `#KW`: no CANON
+        // name, and not the `KW_` prefix, so they went uncoloured.
+        assert_eq!(token_type("#KW", None), Some(TokenType::Keyword));
+        assert_eq!(token_type("KW_if", None), Some(TokenType::Keyword));
+        assert_eq!(token_type("#KWX", None), None);
+        assert_eq!(token_type("#KW_", None), None);
+        // An entry's override still wins.
+        let overrides: Overrides = [("#KW".to_string(), "property".to_string())]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            token_type("#KW", Some(&overrides)),
+            Some(TokenType::Property)
+        );
+    }
+
+    #[test]
+    fn a_token_reported_at_the_end_of_its_text_is_coloured_where_it_starts() {
+        // TOML's string matcher builds each string token from the cursor
+        // AFTER the string, so the token lexed next, starting there,
+        // shadowed it and no string was coloured. Put back on its text, it
+        // is coloured there, in UTF-16 units, split per line with the CR
+        // of a CRLF left out, as any other token is.
+        let text = "k = \"\u{1F600}\"\nc = '''\r\nz'''\n";
+        let events = vec![
+            point("#ID", 0, 1, 1, "k"),
+            point("#CL", 2, 1, 3, "="),
+            point("#ST", 10, 1, 8, "\"\u{1F600}\""),
+            point("#LN", 10, 1, 8, "\n"),
+            point("#ID", 11, 2, 1, "c"),
+            point("#CL", 13, 2, 3, "="),
+            point("#ST", 24, 3, 5, "'''\r\nz'''"),
+            point("#LN", 24, 3, 5, "\n"),
+            point("#ZZ", 25, 4, 1, ""),
+        ];
+        assert_eq!(
+            rows(&semantic_tokens(&events, None, text)),
+            [
+                (0, 0, 1, "variable"),
+                (0, 2, 1, "operator"),
+                (0, 4, 4, "string"),
+                (1, 0, 1, "variable"),
+                (1, 2, 1, "operator"),
+                (1, 4, 3, "string"),
+                (2, 0, 4, "string"),
+            ]
+        );
+    }
+
+    #[test]
     fn columns_are_utf16_with_scalar_values_beside_them() {
         // {"é":"😀","b":1}   é is one unit, the emoji two.
         let text = "{\"\u{e9}\":\"\u{1F600}\",\"b\":1}";
@@ -653,7 +709,7 @@ mod tests {
                 (2, 4, 1, "operator"),
             ]
         );
-        let segs = segments(&reconcile(&events), None, text);
+        let segs = segments(&crate::trace::reconcile(&events), None, text);
         assert_eq!(&text[segs[3].start..segs[3].end], "`one");
         assert_eq!(&text[segs[4].start..segs[4].end], "two`");
     }

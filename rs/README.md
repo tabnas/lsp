@@ -24,7 +24,7 @@ in one place, and a thin binary. Every part is complete:
 | `types` | the shared definitions across `ts/src/*.js` | `Position`, `Range`, `PositionEncoding`; `Doc`; `Diagnostic`; `Entry` with `Load`, `Scope`, `EntrySource`; `RuleEvent`, `Collected`; `MakeInstance`; `Config`; `LoadError`, `Issue` | complete |
 | `documents` | `ts/src/documents.js`, `go/documents.go` | the line index; byte offsets, engine rows and columns to and from wire positions in the negotiated encoding; a diagnostic's range; incremental changes; `DocumentStore` | complete: UTF-16 and UTF-8 wire units, incremental changes, the store's negotiated encoding; tested on every encoding edge and swept against the TypeScript store |
 | `instances` | `ts/src/instances.js`, `go/core.go` | one instance per cache key; the ONE permanent mux subscriber pair; serialized parses with an active collector; quarantine after 3 failures; invalidation on reload | complete: parses serialized across threads by a re-entrant gate, a panicking `MakeInstance` counted toward quarantine; tested against the fixture grammar |
-| `trace` | `ts/src/core.js` `reconcile` | the `subscribe_lex` collector and the reconciliation contract | complete, fixture-tested |
+| `trace` | `ts/src/core.js` `reconcile`, `anchor` | the `subscribe_lex` collector and the reconciliation contract, run against the source text (`reconcile_in`), so that a token its grammar reported where its text ends is put back on that text first (`anchor`) | complete, fixture-tested |
 | `semantic` | `ts/src/core.js` `tokenType`, `semanticTokens` | the CANON map, prefix conventions, fixed legend, LSP tokens, delta encoding | complete, fixture-tested |
 | `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens (in the document's encoding), outline, the reconciled trace | complete: fixture-tested, and equal to the TypeScript pipeline on every document of the random sweep (below) wherever the two engines agree on the parse, and on every document when both are fed the TypeScript engine's events |
 | `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment, at the engine's columns | complete: the `outlines` fixture section pins whole symbol trees, ranges included; nesting bounded at `MAX_OUTLINE_DEPTH` (256) so no document can exhaust a stack, a bound TypeScript does not have |
@@ -213,8 +213,10 @@ and calls `server::serve`.
 `rs/tests/conformance_test.rs`, one runner per section: `analyze`
 (diagnostic codes in order, the first diagnostic's range, the outline's
 name tree), `completions` (sorted labels at a position), `outlines`
-(whole symbol trees, ranges included) and `semantic` (error count,
-decoded tokens, delta-encoded data). All three runtimes pass every
+(whole symbol trees, ranges included), `semantic` (error count,
+decoded tokens, delta-encoded data) and `traces` (decoded tokens and
+delta-encoded data of a lex trace recorded from a fleet grammar, fed
+to the pipeline with no parse). All three runtimes pass every
 section. Values come from the TypeScript pipeline; when this crate
 disagrees, this crate changes, and a TypeScript defect is reported, not
 papered over.

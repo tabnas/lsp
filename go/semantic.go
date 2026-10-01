@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // DefaultTokenTypes maps engine-standard token names (railroad's CANON
@@ -31,11 +32,15 @@ var DefaultTokenTypes = map[string]string{
 	"#CA": "operator",
 }
 
+// prefixTypes are the conventions for grammars with their own token
+// schemes. The keyword one also takes the whole name #KW, as the
+// identifier one takes ID and #ID: alchemy's lexer gives its `:name`
+// keywords that name.
 var prefixTypes = []struct {
 	re  *regexp.Regexp
 	typ string
 }{
-	{regexp.MustCompile(`^KW_`), "keyword"},
+	{regexp.MustCompile(`^KW_|^#KW$`), "keyword"},
 	{regexp.MustCompile(`^LIT_`), "string"},
 	{regexp.MustCompile(`^TRIVIA_`), "comment"},
 	{regexp.MustCompile(`^PP_`), "macro"},
@@ -82,15 +87,52 @@ type SemanticTokens struct {
 	Legend []string `json:"-"`
 }
 
+// anchor puts a token where its source text is, mirroring the TS
+// core's anchor(). The lex-trace contract places a token at
+// [SI, SI+len(Src)), and reconcile shadows by that span. A grammar's
+// matcher can build its token from the cursor AFTER its text instead
+// (@tabnas/toml's string matcher does, deliberately, in every runtime),
+// and the token that starts there, lexed later, then shadows it: no
+// TOML string was ever coloured. A token whose source text ends at SI
+// rather than starting there is moved back onto that text, its row by
+// the line feeds it spans and its column by its length in runes, or,
+// when it spans lines, from the text before it. Every other token is
+// returned as it is, so a grammar that keeps the contract sees no
+// change.
+func anchor(t tokenPoint, text string) tokenPoint {
+	n := len(t.Src)
+	if 0 == n || t.SI < n || t.SI > len(text) {
+		return t
+	}
+	if strings.HasPrefix(text[t.SI:], t.Src) {
+		return t
+	}
+	start := t.SI - n
+	if text[start:t.SI] != t.Src {
+		return t
+	}
+	ci := t.CI - utf8.RuneCountInString(t.Src)
+	if strings.ContainsAny(t.Src, "\r\n") || ci < 1 {
+		// The engine restarts the column at a line feed and at a lone CR.
+		brk := strings.LastIndexAny(text[:start], "\r\n")
+		ci = 1 + utf8.RuneCountInString(text[brk+1:start])
+	}
+	t.RI -= strings.Count(t.Src, "\n")
+	t.SI = start
+	t.CI = ci
+	return t
+}
+
 // reconcile reconstructs the final token list per the documented
 // lex-trace contract: iterate newest-first, a claimed byte span
-// shadows any older event starting inside it.
-func reconcile(events []tokenPoint) []tokenPoint {
+// shadows any older event starting inside it. Each token is first put
+// where its text is in text, the source that was parsed (anchor).
+func reconcile(events []tokenPoint, text string) []tokenPoint {
 	type span struct{ s, e int }
 	var claimed []span
 	var out []tokenPoint
 	for i := len(events) - 1; i >= 0; i-- {
-		t := events[i]
+		t := anchor(events[i], text)
 		ln := srcLenBytes(t.Src)
 		shadowed := false
 		for _, c := range claimed {
@@ -120,6 +162,10 @@ func SemanticTokensOf(events []tokenPoint, entry *Entry, doc *Doc) *SemanticToke
 	if nil != entry {
 		overrides = entry.SemanticTokens
 	}
+	text := ""
+	if nil != doc {
+		text = doc.Text
+	}
 	data := []int{}
 	prevLine, prevChar := 0, 0
 	emit := func(line, char, length, typeI int) {
@@ -138,7 +184,7 @@ func SemanticTokensOf(events []tokenPoint, entry *Entry, doc *Doc) *SemanticToke
 		prevLine = line
 		prevChar = char
 	}
-	for _, t := range reconcile(events) {
+	for _, t := range reconcile(events, text) {
 		typ := TokenType(t.Name, overrides)
 		if "" == typ {
 			continue
