@@ -30,14 +30,6 @@
 //!   [`Doc::offset_at`] (the protocol's rule, and the Go port's); the
 //!   TypeScript store adds it to the line start and so completes against
 //!   text from the lines after the cursor.
-//! - A prefix that ends inside a string or a block comment (a cursor
-//!   inside one) leaves the engine an unterminated token, and the
-//!   engines answer three ways: TypeScript with the start rule's
-//!   openers, Rust with the failing rule's tokens, Go with a third set.
-//!   That is an engine divergence, parser's to repair, and the only kind
-//!   of completion difference the random sweep (`tests/parity_sweep.rs`)
-//!   finds; `tests/completion_test.rs` registers it with both answers so
-//!   a repair fails there loudly.
 //! - A grammar callback that panics: the TypeScript engine lets the throw
 //!   reach the core, whose `catch` answers with no items; the Rust engine
 //!   catches the panic inside `continuations` and answers with the start
