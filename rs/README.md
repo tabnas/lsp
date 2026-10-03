@@ -29,7 +29,7 @@ in one place, and a thin binary. Every part is complete:
 | `analyze` | `ts/src/core.js` `analyze`, `diagnostics` | one parse per change: diagnostics through recovery, semantic tokens (in the document's encoding), outline, the reconciled trace | complete: fixture-tested, and equal to the TypeScript pipeline on every document of the random sweep (below) wherever the two engines agree on the parse, and on every document when both are fed the TypeScript engine's events |
 | `outline` | `ts/src/core.js` `outline`, `go/outline.go` | rule events to nested `DocumentSymbol`s by span containment, at the engine's columns | complete: the `outlines` fixture section pins whole symbol trees, ranges included; nesting bounded at `MAX_OUTLINE_DEPTH` (256) so no document can exhaust a stack, a bound TypeScript does not have |
 | `hover` | `ts/src/server.js` `onHover` | the token under the cursor (`token_at`, `token_range`) and its description (TypeScript answers `null` today; parity means `None` until it ships) | complete |
-| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations of the text before the cursor as items, sentinels filtered, fixed source as label, under the parse lock | complete: fixture-tested; the TypeScript items, in order, pinned at the start, middle and end of a document, inside tokens and in both encodings; equal to the TypeScript core at every random cursor of the sweep except where the prefix ends inside an unterminated string or block comment, an engine divergence registered in `tests/completion_test.rs` |
+| `completion` | `ts/src/core.js` `completion`, `go/completion.go` | continuations of the text before the cursor as items, sentinels filtered, fixed source as label, under the parse lock | complete: fixture-tested; the TypeScript items, in order, pinned at the start, middle and end of a document, inside tokens and in both encodings; equal to the TypeScript core at every random cursor of the sweep, with prefixes ending inside an unterminated string or block comment pinned to the canonical openers in `tests/completion_test.rs` |
 | `registry` | `ts/src/registry.js`, `go/registry.go` | the embedded `ts/data/registry.json`; the tiers (`Router`); routing by language id and extension, folder-scoped workspace entries, ties surfaced | complete: routing case for case with the TypeScript suites; the collision policy read from the generated file, never copied; media types a host lookup (`resolve_media_type`, and last in `resolve_with_media_type`), never the server's routing, as in TypeScript; hot reload's entry points (`set_workspace`, `reloaded_by`) |
 | `loaders` | `ts/src/loaders.js` | L1 linked grammars, L2 specs, L3 dialect text; the grammar firewall and its caps; the sandbox; `Loader` as the binary's `MakeInstance` | complete: the firewall rule for rule with the TypeScript limits and messages, one test per refusal, its builtin set asked of the engine; the sandbox on real paths; L3 lowers all three dialects to pure data, where TypeScript refuses every `.ebnf` and `.gbnf` file (a TypeScript defect, reported) |
 | `jsonrpc` | `go/jsonrpc.go` | Content-Length framing; `Message`; a `Connection` with a reader thread, a locked writer and `recv_timeout` for the debounce | complete; malformed input is answered (`ParseError`, `InvalidRequest`) or logged, never fatal |
@@ -250,7 +250,6 @@ and are not papered over here. Each reproduces with the engine alone:
 
 | Input | TypeScript engine | Rust engine |
 |---|---|---|
-| a completion prefix ending inside an unterminated string or block comment: `{"`, `[/*` | the start rule's openers `#NR #ST #VL #OB #OS` | the enclosing container's continuations: `#NR #ST #VL #CB`, or `... #OB #OS #CS` in a list |
 | `"\n1]` (an `unprintable` character in a string) | the parse ends there: one error | parsing resumes after it: value `1`, a second error (`unexpected ]`) |
 | `/*cccccccccccccccc}` (an unterminated block comment) | the bad token stops at 18 code points and `}` lexes on | the bad token runs to the end of the source (`len` 19) |
 | `"\n`, `/*\n` | the message's source excerpt indents each continuation line by two spaces (`unprintable character: \n` and two spaces) | no indent |
@@ -258,8 +257,8 @@ and are not papered over here. Each reproduces with the engine alone:
 | ` [] [` (trailing content) | the root rule's close `ruleDone` fires twice | once |
 | `/*[]` with recovery off | the bad token reaches `lex` subscribers, and the open rule's `ruleDone` fires | neither |
 
-Only the first four change what a client sees (completion items;
-diagnostics, outline and token data; ranges and tokens; messages).
+Only the first three change what a client sees (diagnostics, outline and
+token data; ranges and tokens; messages).
 TypeScript is canonical, so each is a Rust engine bug unless the parser
 maintainer rules the TypeScript behaviour the defect.
 
