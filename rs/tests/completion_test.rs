@@ -225,10 +225,10 @@ fn at_the_end_of_a_document() {
 #[test]
 fn inside_a_string_the_prefix_ends_in_the_string() {
     // A cursor inside a string cuts the prefix inside it, so the engine
-    // is asked about an unterminated string, and the engines disagree on
-    // the answer (see the registered divergence below). What this port
-    // owns is the cut: the prefix is the text before the cursor, in
-    // either encoding, never rounded out to the token's end.
+    // is asked about an unterminated string. What this port owns is the
+    // cut: the prefix is the text before the cursor, in either encoding,
+    // never rounded out to the token's end. The canonical completion
+    // answers for those prefixes are pinned below.
     let cases: [Encoded<&str>; 4] = [
         ("[\"abc\"]", (0, 3), (0, 3), "[\"a"),
         ("{\"abc\":1}", (0, 3), (0, 3), "{\"a"),
@@ -247,116 +247,47 @@ fn inside_a_string_the_prefix_ends_in_the_string() {
     }
 }
 
-/// A case registered as an engine divergence: its name, the document,
-/// the cursor (UTF-16), the TypeScript items, the Rust items.
-type Divergent = (
-    &'static str,
-    &'static str,
-    Cursor,
-    Vec<CompletionItem>,
-    Vec<CompletionItem>,
-);
-
 #[test]
-fn inside_a_string_or_comment_is_a_registered_engine_divergence() {
-    // An ENGINE divergence, parser's to repair, not this crate's: after a
-    // prefix ending in an unterminated string (or block comment: the
-    // random sweep, tests/parity_sweep.rs, found every one of its
-    // completion differences to be one of the two) the lexer fails, and
-    // the three engines' `continuations` answer three ways. TypeScript
-    // (canonical) offers the start rule's openers, whatever the context;
-    // Rust offers the failing rule's tokens, a key or a close brace in an
-    // object and a value or a close square in a list; Go another reading
-    // again (`{"a`: `#NR #ST #VL`; `["a`: those, `{`, `[`, `]` and `,`).
-    // The TypeScript answers are pinned beside the Rust ones, so a repair
-    // in either engine fails here, and the case then moves to
-    // `inside_a_string_the_prefix_ends_in_the_string` with the canonical
-    // items. Completion itself maps whatever the engine answers.
-    let in_an_object = vec![kw("#NR"), kw("#ST"), kw("#VL"), op("}", "#CB")];
-    let in_a_list_string_comment = || {
-        vec![
-            kw("#NR"),
-            kw("#ST"),
-            kw("#VL"),
-            op("{", "#OB"),
-            op("[", "#OS"),
-            op("]", "#CS"),
-        ]
-    };
-    let in_a_list_string = in_a_list_string_comment();
-    let cases: Vec<Divergent> = vec![
-        (
-            "inside a list's string",
-            "[\"abc\"]",
-            (0, 3),
-            openers(),
-            in_a_list_string.clone(),
-        ),
-        (
-            "just after the quote",
-            "[\"abc\"]",
-            (0, 2),
-            openers(),
-            in_a_list_string.clone(),
-        ),
+fn inside_a_string_or_comment_uses_the_canonical_openers() {
+    // tabnas/parser#274 closed the registered engine divergence for a prefix
+    // ending in an unterminated string or block comment. Rust now agrees
+    // with the canonical engine: `continuations` offers the start rule's
+    // openers whatever context the bad token interrupted.
+    run(&[
+        ("inside a list's string", "[\"abc\"]", (0, 3), openers()),
+        ("just after the quote", "[\"abc\"]", (0, 2), openers()),
         (
             "between two astral characters",
             "[\"\u{1F600}\u{1F600}\"]",
             (0, 4),
             openers(),
-            in_a_list_string,
         ),
-        (
-            "inside a key",
-            "{\"abc\":1}",
-            (0, 3),
-            openers(),
-            in_an_object.clone(),
-        ),
+        ("inside a key", "{\"abc\":1}", (0, 3), openers()),
         (
             "inside a nested key",
             "{\"k\":{\"n\":1}}",
             (0, 7),
             openers(),
-            in_an_object.clone(),
         ),
         (
             "inside a key on a later line",
             "{\n  \"a\": 1\n}",
             (1, 3),
             openers(),
-            in_an_object.clone(),
         ),
         (
             "inside an object's block comment",
             "{/* x */\"a\":1}",
             (0, 3),
             openers(),
-            in_an_object,
         ),
         (
             "inside a list's block comment",
             "[/* x */1]",
             (0, 3),
             openers(),
-            in_a_list_string_comment(),
         ),
-    ];
-    let (instances, inst, entry) = stack();
-    for (name, input, (line, character), typescript, rust) in cases {
-        let got = completion(
-            Some(&instances),
-            &inst,
-            &entry,
-            &doc(input),
-            Position::new(line, character),
-        );
-        assert_ne!(
-            got, typescript,
-            "{name}: the engines agree now; move the case to the canonical tables"
-        );
-        assert_eq!(got, rust, "{name}: the Rust engine's answer changed");
-    }
+    ]);
 }
 
 #[test]
