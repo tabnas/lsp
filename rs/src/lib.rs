@@ -79,7 +79,7 @@ pub use types::{
 /// release orchestrator rewrites every version site together, and
 /// `tests/version_test.rs` fails the build if they drift. Mirrors
 /// `VERSION` in `ts/src/core.js` and `const VERSION` in `go/lsp.go`.
-pub const VERSION: &str = "0.1.4";
+pub const VERSION: &str = "0.1.5";
 
 /// The README's Rust examples run as doctests, so a stale one fails the
 /// gate rather than misleading the reader. Its `toml` and `bash` fences
