@@ -129,11 +129,17 @@ make -C . test-rs  # cd rs && cargo test --all-targets, then clippy
 ci/rust/run.sh     # the full Rust gate CI runs: fmt, doctests, the lock check, MSRV toolchain
 ```
 
-The TS package resolves the engine from the sibling checkout
-(`file:../../parser/ts` devDependency) — build the engine first:
-`cd ../parser/ts && npm i && npm run build`. The Go module's engine
-floor is the released `go/v0.9.0`; `make go-work` (implied by
-`test-go`) points it at the sibling checkout instead. The Rust crate
+The TS package resolves `@tabnas/parser` from the npm registry: it is a
+`peerDependency` (`">=0"`, see "Releasing") and a `"^0.12.8"`
+devDependency, neither a `file:` path, and the committed
+`ts/package-lock.json` pins the release `npm i` installs
+(`engines.node` is `">=24"`). Admin's `scripts/link.sh` can symlink
+`ts/node_modules/@tabnas/parser` to the sibling checkout instead. The
+suite needs that checkout built either way, because `generate.test.js`
+links `../parser/ts` into the server it generates and runs it — build
+the engine first: `cd ../parser/ts && npm i && npm run build`. The Go
+module's engine floor is the released `go/v0.9.0`; `make go-work`
+(implied by `test-go`) points it at the sibling checkout instead. The Rust crate
 takes the engine as `tabnas = { package = "tabnas-parser", path = "../../parser/rs" }` (the crate
 is unpublished, so there is no registry version to fall back on) and
 declares `rust-version = "1.85"`, the fleet MSRV; `ci/rust/run.sh`
