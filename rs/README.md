@@ -264,15 +264,11 @@ maintainer rules the TypeScript behaviour the defect.
 
 ## Install
 
-The `tabnas` crate is not published to a registry, so the engine is
-consumed as a **sibling checkout**, the standard tabnas development
-model. Clone `https://github.com/tabnas/parser` next to this repository
-and point at both:
+The crate and the engine are both on crates.io, the engine as
+`tabnas-parser`, whose library is named `tabnas` in code, so add both:
 
-```toml
-[dependencies]
-tabnas-lsp = { path = "../lsp/rs" }
-tabnas = { package = "tabnas-parser", path = "../parser/rs" }
+```bash
+cargo add tabnas-lsp tabnas-parser
 ```
 
 Both entries are needed. A crate's dependencies are not passed on to its
@@ -280,7 +276,7 @@ dependents, so `tabnas-lsp` alone does not put `tabnas` in your extern
 prelude, and the examples above that name `tabnas::Tabnas` would not
 resolve.
 
-A git dependency works the same way: `tabnas-lsp = { git =
+A git dependency works too: `tabnas-lsp = { git =
 "https://github.com/tabnas/lsp" }` with a `[patch]` entry redirecting
 `tabnas` at your own checkout or git reference. The library needs no
 feature; a host never links the fleet. The optional dialect and fleet

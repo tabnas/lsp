@@ -7,8 +7,9 @@
 # The engine is a PATH DEPENDENCY on the sibling checkout
 # (rs/Cargo.toml: `tabnas = { package = "tabnas-parser", path = "../../parser/rs" }`), and so are the
 # BNF-dialect compilers behind the `dialects` feature and the fleet
-# grammars behind `fleet`. None of these crates is published, so there is
-# no registry version to fall back on, and cargo reads EVERY path
+# grammars behind `fleet`. These crates are on crates.io, but the
+# committed manifest names them by path alone, so there is no registry
+# version to fall back on, and cargo reads EVERY path
 # dependency's manifest to resolve the graph, features on or off, so all
 # of them have to be present to build at all. Clone them next to this
 # repo before running (the ci-rust job clones the same list); the ci-go

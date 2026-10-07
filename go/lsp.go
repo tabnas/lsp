@@ -7,7 +7,7 @@
 // Continuations — plus a minimal stdio JSON-RPC front-end (Serve).
 //
 // TS is canonical; this port mirrors it by fixture parity
-// (test/fixtures/, run by both runtimes), never by code sharing. It
+// (test/fixtures/, run by every runtime), never by code sharing. It
 // exists so the generator can emit static, single-binary language
 // servers for grammars that live in Go — or for any pure-data
 // GrammarSpec, which is runtime-independent (design §7).

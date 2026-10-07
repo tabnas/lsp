@@ -140,8 +140,9 @@ links `../parser/ts` into the server it generates and runs it — build
 the engine first: `cd ../parser/ts && npm i && npm run build`. The Go
 module's engine floor is the released `go/v0.9.0`; `make go-work`
 (implied by `test-go`) points it at the sibling checkout instead. The Rust crate
-takes the engine as `tabnas = { package = "tabnas-parser", path = "../../parser/rs" }` (the crate
-is unpublished, so there is no registry version to fall back on) and
+takes the engine as `tabnas = { package = "tabnas-parser", path = "../../parser/rs" }` (it is on
+crates.io, but the committed manifest names it by path alone, so there is
+no registry version to fall back on) and
 declares `rust-version = "1.85"`, the fleet MSRV; `ci/rust/run.sh`
 runs through that toolchain when rustup has it. CI clones the parser as
 a sibling for the same reason in all three jobs: this repo tracks
@@ -265,13 +266,17 @@ The steps, in order:
    ```bash
    (
      cd go
-     go mod edit -json | grep -q '"Replace": null' || { echo 'go.mod has a replace'; exit 1; }
+     go mod edit -json | jq -e '.Replace == null' >/dev/null || { echo 'go.mod has a replace'; exit 1; }
      GOWORK=off go test -count=1 ./...
    )
    ```
 
    `-count=1` because shared fixtures live outside the Go module, so a
-   changed corpus does not invalidate the test cache.
+   changed corpus does not invalidate the test cache. The check asks `jq`,
+   not `grep`: current Go leaves the `Replace` key out when there is no
+   replace, where older Go printed `"Replace": null`, and `jq` reads a
+   missing key as null, so the check passes on a clean `go.mod` and fails
+   on a replace either way.
 3. **Merge the bump through a reviewed PR.** That is the house convention —
    `CONTRIBUTING.md` squash-merges PRs and takes the title as the commit
    message — and what `release.yml`'s own header describes. A direct push to

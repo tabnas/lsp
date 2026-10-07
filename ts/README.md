@@ -37,8 +37,8 @@ changes.
 `tabnas-lsp-gen --runtime node|go|rust` picks the generated server's
 runtime: a Node package over this one, a Go module over
 `github.com/tabnas/lsp/go`, or a Cargo crate over the Rust port,
-`tabnas-lsp`, which the crate takes from this repository by git
-dependency because the tabnas crates are not on crates.io. A pure-data
+`tabnas-lsp`, which the generated crate takes from this repository by git
+dependency, although it is also on crates.io. A pure-data
 grammar (`--spec`, or BNF text that `--grammar` compiles at generation
 time) serves from any of the three; a grammar that is live code needs
 its twin in the chosen runtime (`--go-plugin`, `--rust-plugin`). The
