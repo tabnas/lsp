@@ -34,7 +34,7 @@ const OVERRIDES = {
   '@tabnas/ebnf': { pluginKind: 'compiler' },
   '@tabnas/gbnf': { pluginKind: 'compiler' },
   '@tabnas/bnf': { pluginKind: 'compiler' },
-  '@tabnas/expr': { pluginKind: 'modifier', grammarKind: 'imperative' },
+  '@tabnas/expr': { grammarKind: 'imperative' },
   '@tabnas/hoover': { pluginKind: 'modifier', grammarKind: 'imperative' },
   '@tabnas/debug': { pluginKind: 'modifier', grammarKind: 'imperative' },
   '@tabnas/directive': { pluginKind: 'modifier' },

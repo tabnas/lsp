@@ -201,7 +201,6 @@ dependencies = [
  "indexmap",
  "regex",
  "serde_json",
- "tabnas-jsonic",
  "tabnas-parser",
  "tabnas-xml",
 ]
@@ -336,7 +335,6 @@ dependencies = [
  "indexmap",
  "regex",
  "serde_json",
- "tabnas-jsonic",
  "tabnas-parser",
 ]
 
