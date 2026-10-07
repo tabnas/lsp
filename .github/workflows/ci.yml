@@ -1,14 +1,16 @@
 # Target: tabnas/lsp -> .github/workflows/ci.yml
 #
 # Standalone rather than a polyglot-ci.yml caller: the repo follows the
-# ts/ + go/ fleet layout but the TS half ships plain CommonJS with no
-# build step, and the Go half needs a go.work over the sibling engine
-# checkout rather than a released module.
+# ts/ + go/ + rs/ fleet layout but the TS half ships plain CommonJS with
+# no build step, and CI points the Go half at the sibling engine checkout
+# through a go.work (go.mod requires a released engine, and builds
+# against it when there is no checkout).
 #
 # All three jobs clone the parser as a sibling and use it at main: the
-# ts/ package's `file:../../parser/ts` devDependency, go/'s `make
-# test-go` go.work and rs/'s `path = "../../parser/rs"` dependency all
-# resolve that layout. That is the point — this repo tracks engine
+# ts/ generator tests link its built ts/ into the servers they generate
+# (the ts/ package itself installs the engine from the registry), go/'s
+# `make test-go` go.work and rs/'s `path = "../../parser/rs"` dependency
+# resolve the engine to it. That is the point — this repo tracks engine
 # contract work that may be unreleased.
 #
 # Action refs use version tags for readability; Renovate
@@ -134,9 +136,9 @@ jobs:
           cd go && go vet ./... && go test ./...
 
       # The generator's Go end-to-end case, against the pinned Go above.
-      # The engine must be built first: the generated Node/Go servers
-      # resolve @tabnas/parser through the `file:../../parser/ts`
-      # devDependency, exactly as the node job does.
+      # The engine must be built first: test/generate.test.js links the
+      # built ../parser/ts into the servers it generates, exactly as it
+      # does in the node job.
       - name: Build the engine
         shell: bash
         working-directory: parser/ts

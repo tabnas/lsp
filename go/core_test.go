@@ -4,7 +4,7 @@ package lsp
 
 // The Go mirror of ts/test/core.test.js, against the shared pure-data
 // strict-JSON grammar (test/fixtures/json-grammar.json — the L2 lane
-// both runtimes load, which is exactly what makes it the parity test
+// every runtime loads, which is exactly what makes it the parity test
 // grammar).
 
 import (

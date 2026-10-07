@@ -40,13 +40,13 @@
 # nothing, silently.
 #
 # NO BUILD OR TEST STEP HERE, and that is deliberate for THIS repo — do
-# not add one by analogy with other repos' release gates. lsp/ts carries
-# `"@tabnas/parser": "file:../../parser/ts"` as a devDependency, and that
-# sibling does not exist in a standalone checkout. `npm i` still EXITS 0
-# — it creates node_modules/@tabnas/parser as a DANGLING SYMLINK — so a
-# test step would `require` through a dead link and fail. The published
-# tarball carries only bin/src/data/tools with the engine as an open
-# peer, so the dangling dev link never reaches a consumer.
+# not add one by analogy with other repos' release gates. The suite needs
+# a BUILT sibling checkout of the engine: test/generate.test.js reads
+# ../parser/ts/package.json and links ../parser/ts into the server it
+# generates, then runs it. A standalone checkout has no ../parser, so a
+# test step here would fail. (The @tabnas/parser devDependency itself is
+# a registry range, not a file: path.) The published tarball carries only
+# bin/src/data/tools with the engine as an open peer.
 #
 # What gates a release instead: ci.yml runs the full matrix on the PR
 # that bumps the version. admin/publish.sh additionally verifies

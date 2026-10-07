@@ -4,10 +4,12 @@
 # server, mirrored the same way). The TS side ships plain CommonJS —
 # there is no build step; `build` exists for fleet-uniform target names.
 #
-# Local test resolves the engine from the sibling checkout: ts/ via
-# the file:../../parser/ts devDependency, go/ via a go.work created by
-# `make go-work` (not committed; .gitignore'd), rs/ via the
-# `path = "../../parser/rs"` dependency in rs/Cargo.toml.
+# Local test uses the sibling engine checkout where it can: ts/ installs
+# the engine from the registry (a ^0.12.8 devDependency), but its
+# generator tests link a built ../parser/ts into the servers they
+# generate; go/ uses a go.work created by `make go-work` (not committed;
+# .gitignore'd) when ../parser exists, the pinned release otherwise; rs/
+# uses the `path = "../../parser/rs"` dependency in rs/Cargo.toml.
 
 .PHONY: all build test clean build-ts build-go build-rs test-ts test-go test-rs \
         clean-ts clean-go clean-rs go-work gen-registry gen-fixtures publish-ts \

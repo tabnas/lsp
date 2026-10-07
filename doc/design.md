@@ -241,10 +241,12 @@ Three audiences the unified server cannot serve:
   `--go-parser-version` (as the release wave can) to pin them, and the
   emitted comment states which of the two happened.
 
-  The Rust lane has the same limit for a different reason: the tabnas
-  crates are not on crates.io, so the generated `Cargo.toml` names
-  each one's GitHub repository with no revision, the first build takes
-  each default branch, and `Cargo.lock` records the commits. Keeping
+  The Rust lane has the same limit for a different reason: the
+  generator writes git dependencies, so the generated `Cargo.toml` names
+  each tabnas crate's GitHub repository with no revision (every tabnas
+  crate is also on crates.io, but the generator does not use those
+  releases), the first build takes each default branch, and
+  `Cargo.lock` records the commits. Keeping
   that lock with the crate is what makes it reproducible; pass
   `--rust-lsp-rev` and `--rust-parser-rev` (and `--rust-plugin-rev`) to
   pin commits in the manifest itself, and again the emitted comment

@@ -99,14 +99,14 @@ tutorial, used in a guide, specified in the reference, argued in the
 explanation) but the normative statement lives in the reference and
 everything else links to it.
 
-**This repository documents its runtimes in READMEs.** It has two
-runtimes, TypeScript and Go, and neither has a `doc/` directory: the
-gated set is the repository README, which routes to both ports, and
+**This repository documents its runtimes in READMEs.** It has three
+runtimes, TypeScript, Go, and Rust, and none has a `doc/` directory: the
+gated set is the repository README, which routes to every port, and
 `ts/README.md`. `gated-docs.cjs` names each page, and throws when a
 named page is not on disk, so a page renamed or deleted fails the gate
-rather than leaving it. If `ts/doc/` and `go/doc/` pages are added,
-the two runtimes carry the same set, and a page only one port has is a
-deliberate exception that says so in its own opening lines.
+rather than leaving it. If `ts/doc/`, `go/doc/` and `rs/doc/` pages are
+added, the runtimes carry the same set, and a page only one port has is
+a deliberate exception that says so in its own opening lines.
 
 ## The published set cites nothing internal
 

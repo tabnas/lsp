@@ -139,7 +139,7 @@ function generate(opts) {
     else if ('go' === runtime) emitGoServer(lang, opts, files)
     else emitRustServer(lang, opts, files)
     // Editors launch servers from their own working directory, so the
-    // command is the PATH name for both runtimes — the README says how
+    // command is the PATH name for every runtime — the README says how
     // to put the built binary there; vscode's serverPath setting takes
     // an absolute path override.
     const bin = lang.id + '-lsp'
@@ -558,9 +558,10 @@ function emitGoServer(lang, opts, files) {
 // ---------------------------------------------------------------------
 // Rust server crate.
 
-// Where the Rust crates come from. The tabnas crates are not on
-// crates.io, so a generated crate names each one's repository and cargo
-// finds the package inside it (tabnas-lsp lives in this repo's rs/).
+// Where the Rust crates come from. A generated crate names each tabnas
+// crate's repository, and cargo finds the package inside it (tabnas-lsp
+// lives in this repo's rs/). The crates are also on crates.io, but the
+// generator does not use those releases.
 const RUST_LSP_GIT = 'https://github.com/tabnas/lsp'
 const RUST_PARSER_GIT = 'https://github.com/tabnas/parser'
 
