@@ -1,6 +1,6 @@
 {
   "generated": "tools/gen-registry.js",
-  "count": 27,
+  "count": 28,
   "entries": [
     {
       "name": "@tabnas/abnf",
@@ -32,7 +32,8 @@
       "base": "@tabnas/jsonic",
       "errorCodes": [],
       "enabled": false,
-      "grammarKind": "external"
+      "grammarKind": "external",
+      "pluginKind": "grammar"
     },
     {
       "name": "@tabnas/chess",
@@ -42,7 +43,8 @@
       "mediaTypes": [],
       "base": null,
       "errorCodes": [],
-      "languageId": "pgn"
+      "languageId": "pgn",
+      "pluginKind": "grammar"
     },
     {
       "name": "@tabnas/css",
@@ -111,8 +113,8 @@
       "mediaTypes": [],
       "base": "@tabnas/jsonic",
       "errorCodes": [],
-      "pluginKind": "modifier",
-      "grammarKind": "imperative"
+      "grammarKind": "imperative",
+      "pluginKind": "grammar"
     },
     {
       "name": "@tabnas/feed",
@@ -121,7 +123,7 @@
         ".atom"
       ],
       "mediaTypes": [],
-      "base": null,
+      "base": "@tabnas/xml",
       "errorCodes": [],
       "pluginKind": "grammar"
     },
@@ -277,13 +279,15 @@
       "base": null,
       "errorCodes": [],
       "enabled": false,
-      "grammarKind": "external"
+      "grammarKind": "external",
+      "languageId": "markdown",
+      "pluginKind": "grammar"
     },
     {
       "name": "@tabnas/multisource",
       "extensions": [],
       "mediaTypes": [],
-      "base": null,
+      "base": "@tabnas/directive",
       "errorCodes": [
         "multisource_not_found",
         "multisource_cycle"
@@ -304,10 +308,24 @@
         ".proto"
       ],
       "mediaTypes": [],
-      "base": "@tabnas/abnf",
+      "base": null,
       "errorCodes": [],
       "enabled": false,
       "grammarKind": "compiled"
+    },
+    {
+      "name": "@tabnas/semver",
+      "extensions": [],
+      "mediaTypes": [],
+      "base": null,
+      "errorCodes": [],
+      "languageId": "semver",
+      "grammarKind": "closure",
+      "pluginKind": "grammar",
+      "syncGroups": [
+        "end"
+      ],
+      "lexStream": "clean"
     },
     {
       "name": "@tabnas/toml",
@@ -318,7 +336,10 @@
         "application/toml"
       ],
       "base": "@tabnas/jsonic",
-      "errorCodes": [],
+      "errorCodes": [
+        "toml_key_conflict",
+        "invalid_datetime"
+      ],
       "enabled": false,
       "languageId": "toml",
       "grammarKind": "closure",
@@ -339,7 +360,7 @@
         "application/xml",
         "text/xml"
       ],
-      "base": "@tabnas/jsonic",
+      "base": null,
       "errorCodes": [
         "xml_mismatched_tag",
         "xml_invalid_tag",

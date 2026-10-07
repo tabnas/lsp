@@ -608,14 +608,14 @@ const RUST_BIN = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/
 // What each fleet grammar crate names by sibling path beyond the engine
 // (its rs/Cargo.toml `[dependencies]`): the registry's base chain says
 // which grammar a crate is layered on, but a crate can name more (ini
-// names hoover, feed names jsonic and xml with no base at all), and a
+// names hoover, feed names xml with no base at all), and a
 // git checkout of the crate has to be supplied every one of them from
 // its own repository. ts/test/generate.test.js holds this map to the
 // sibling checkouts whenever the fleet layout has them.
 const RUST_FLEET_DEPS = {
-  csv: ['jsonic'], feed: ['jsonic', 'xml'], ini: ['jsonic', 'hoover'],
+  csv: ['jsonic'], feed: ['xml'], ini: ['jsonic', 'hoover'],
   json: [], json5: ['jsonic'], jsonc: ['jsonic'], jsonic: ['json'],
-  jsonl: ['json'], toml: ['jsonic'], xml: ['jsonic'], yaml: ['jsonic'],
+  jsonl: ['json'], toml: ['jsonic'], xml: [], yaml: ['jsonic'],
   zon: ['jsonic'], hoover: [], abnf: ['bnf'], ebnf: ['bnf'], gbnf: ['bnf'],
   bnf: [],
 }

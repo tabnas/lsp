@@ -478,8 +478,10 @@ describe('generate-rust', () => {
   })
 
   it('a fleet plugin is supplied everything its manifest names by path, not only its base', (t) => {
-    // ini names hoover beside its base jsonic; feed names jsonic and xml
-    // with no registry base at all. Each table names the engine first.
+    // ini names hoover beside its base jsonic; feed names xml with no
+    // registry base at all, and xml names only the engine (jsonic is a
+    // dev-dependency of both since xml#87 and feed#78). Each table names
+    // the engine first.
     const tablesOf = (cargo) => {
       const tables = new Map()
       for (const block of cargo.split('\n[patch.').slice(1)) {
@@ -507,8 +509,9 @@ describe('generate-rust', () => {
     assert.deepStrictEqual(ini.get('json'), ['tabnas'], [...ini])
     assert.ok(!ini.has('abnf') && !ini.has('yaml'), 'only the plugin\'s closure: ' + [...ini.keys()])
     const feed = gen('feed')
-    assert.deepStrictEqual(feed.get('feed'), ['tabnas', 'tabnas-jsonic', 'tabnas-xml'], [...feed])
-    assert.deepStrictEqual(feed.get('xml'), ['tabnas', 'tabnas-jsonic'], [...feed])
+    assert.deepStrictEqual(feed.get('feed'), ['tabnas', 'tabnas-xml'], [...feed])
+    assert.deepStrictEqual(feed.get('xml'), ['tabnas'], [...feed])
+    assert.ok(!feed.has('jsonic') && !feed.has('json'), 'feed\'s closure needs no jsonic: ' + [...feed.keys()])
     // The map is held to the sibling checkouts wherever the fleet layout
     // has them: each crate's own [dependencies] path entries.
     let checked = 0
