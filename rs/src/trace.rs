@@ -476,7 +476,10 @@ mod tests {
             at("#ST", usize::MAX, 1, 1, "x"),
         ] {
             assert_eq!(anchor(&event, text), None, "{event:?}");
-            assert_eq!(reconcile_in(&[event.clone()], text), vec![event]);
+            assert_eq!(
+                reconcile_in(std::slice::from_ref(&event), text),
+                vec![event]
+            );
         }
     }
 
