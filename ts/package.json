@@ -1,6 +1,6 @@
 {
   "name": "@tabnas/lsp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "commonjs",
   "main": "src/core.js",
   "description": "Unified language server and language-server generator for tabnas grammars",
